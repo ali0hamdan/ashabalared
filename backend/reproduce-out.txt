@@ -1,0 +1,81 @@
+OK  $connect
+OK  beneficiary.count
+ERR beneficiary.findMany (list shape)
+PrismaClientKnownRequestError: 
+Invalid `prisma.beneficiary.findMany()` invocation:
+
+
+The column `Beneficiary.familyCount` does not exist in the current database.
+    at $n.handleRequestError (c:\Users\alihm\OneDrive\Desktop\managesystem\backend\node_modules\@prisma\client\runtime\library.js:121:7315)
+    at $n.handleAndLogRequestError (c:\Users\alihm\OneDrive\Desktop\managesystem\backend\node_modules\@prisma\client\runtime\library.js:121:6623)
+    at $n.request (c:\Users\alihm\OneDrive\Desktop\managesystem\backend\node_modules\@prisma\client\runtime\library.js:121:6307)
+    at async l (c:\Users\alihm\OneDrive\Desktop\managesystem\backend\node_modules\@prisma\client\runtime\library.js:130:9633)
+    at async main (file:///c:/Users/alihm/OneDrive/Desktop/managesystem/backend/scripts/reproduce-prisma-queries.mjs:195:7) {
+  code: 'P2022',
+  clientVersion: '5.22.0',
+  meta: { modelName: 'Beneficiary', column: 'Beneficiary.familyCount' }
+}
+ERR aidCategory.findMany
+PrismaClientKnownRequestError: 
+Invalid `prisma.aidCategory.findMany()` invocation:
+
+
+The column `AidCategory.name` does not exist in the current database.
+    at $n.handleRequestError (c:\Users\alihm\OneDrive\Desktop\managesystem\backend\node_modules\@prisma\client\runtime\library.js:121:7315)
+    at $n.handleAndLogRequestError (c:\Users\alihm\OneDrive\Desktop\managesystem\backend\node_modules\@prisma\client\runtime\library.js:121:6623)
+    at $n.request (c:\Users\alihm\OneDrive\Desktop\managesystem\backend\node_modules\@prisma\client\runtime\library.js:121:6307)
+    at async l (c:\Users\alihm\OneDrive\Desktop\managesystem\backend\node_modules\@prisma\client\runtime\library.js:130:9633)
+    at async main (file:///c:/Users/alihm/OneDrive/Desktop/managesystem/backend/scripts/reproduce-prisma-queries.mjs:195:7) {
+  code: 'P2022',
+  clientVersion: '5.22.0',
+  meta: { modelName: 'AidCategory', column: 'AidCategory.name' }
+}
+ERR stockItem.findMany
+PrismaClientKnownRequestError: 
+Invalid `prisma.stockItem.findMany()` invocation:
+
+
+The column `StockItem.aidCategoryItemId` does not exist in the current database.
+    at $n.handleRequestError (c:\Users\alihm\OneDrive\Desktop\managesystem\backend\node_modules\@prisma\client\runtime\library.js:121:7315)
+    at $n.handleAndLogRequestError (c:\Users\alihm\OneDrive\Desktop\managesystem\backend\node_modules\@prisma\client\runtime\library.js:121:6623)
+    at $n.request (c:\Users\alihm\OneDrive\Desktop\managesystem\backend\node_modules\@prisma\client\runtime\library.js:121:6307)
+    at async l (c:\Users\alihm\OneDrive\Desktop\managesystem\backend\node_modules\@prisma\client\runtime\library.js:130:9633)
+    at async main (file:///c:/Users/alihm/OneDrive/Desktop/managesystem/backend/scripts/reproduce-prisma-queries.mjs:195:7) {
+  code: 'P2022',
+  clientVersion: '5.22.0',
+  meta: { modelName: 'StockItem', column: 'StockItem.aidCategoryItemId' }
+}
+ERR distributionRecord.findMany
+PrismaClientKnownRequestError: 
+Invalid `prisma.distributionRecord.findMany()` invocation:
+
+
+The column `DistributionRecord.createdById` does not exist in the current database.
+    at $n.handleRequestError (c:\Users\alihm\OneDrive\Desktop\managesystem\backend\node_modules\@prisma\client\runtime\library.js:121:7315)
+    at $n.handleAndLogRequestError (c:\Users\alihm\OneDrive\Desktop\managesystem\backend\node_modules\@prisma\client\runtime\library.js:121:6623)
+    at $n.request (c:\Users\alihm\OneDrive\Desktop\managesystem\backend\node_modules\@prisma\client\runtime\library.js:121:6307)
+    at async l (c:\Users\alihm\OneDrive\Desktop\managesystem\backend\node_modules\@prisma\client\runtime\library.js:130:9633)
+    at async main (file:///c:/Users/alihm/OneDrive/Desktop/managesystem/backend/scripts/reproduce-prisma-queries.mjs:195:7) {
+  code: 'P2022',
+  clientVersion: '5.22.0',
+  meta: {
+    modelName: 'DistributionRecord',
+    column: 'DistributionRecord.createdById'
+  }
+}
+OK  dashboard counts batch
+ERR stockItem low-stock select (dashboard)
+PrismaClientKnownRequestError: 
+Invalid `prisma.stockItem.findMany()` invocation:
+
+
+The column `StockItem.aidCategoryItemId` does not exist in the current database.
+    at $n.handleRequestError (c:\Users\alihm\OneDrive\Desktop\managesystem\backend\node_modules\@prisma\client\runtime\library.js:121:7315)
+    at $n.handleAndLogRequestError (c:\Users\alihm\OneDrive\Desktop\managesystem\backend\node_modules\@prisma\client\runtime\library.js:121:6623)
+    at $n.request (c:\Users\alihm\OneDrive\Desktop\managesystem\backend\node_modules\@prisma\client\runtime\library.js:121:6307)
+    at async l (c:\Users\alihm\OneDrive\Desktop\managesystem\backend\node_modules\@prisma\client\runtime\library.js:130:9633)
+    at async main (file:///c:/Users/alihm/OneDrive/Desktop/managesystem/backend/scripts/reproduce-prisma-queries.mjs:195:7) {
+  code: 'P2022',
+  clientVersion: '5.22.0',
+  meta: { modelName: 'StockItem', column: 'StockItem.aidCategoryItemId' }
+}

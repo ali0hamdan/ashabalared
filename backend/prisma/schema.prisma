@@ -1,0 +1,265 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum RoleCode {
+  SUPER_ADMIN
+  ADMIN
+  DELIVERY
+}
+
+enum BeneficiaryStatus {
+  ACTIVE
+  INACTIVE
+  ARCHIVED
+}
+
+enum DistributionStatus {
+  PENDING
+  ASSIGNED
+  DELIVERED
+  CANCELLED
+}
+
+enum StockUnit {
+  PIECE
+  BOX
+  PACK
+  BAG
+  KG
+  LITER
+  SET
+}
+
+enum StockMovementType {
+  ADJUSTMENT_IN
+  ADJUSTMENT_OUT
+  RESERVE
+  RELEASE_RESERVE
+  DELIVERY_OUT
+}
+
+model Role {
+  id     String   @id @default(cuid())
+  code   RoleCode @unique
+  nameAr String
+  nameEn String?
+  users  User[]
+}
+
+model Region {
+  id            String        @id @default(cuid())
+  nameAr        String
+  nameEn        String?
+  sortOrder     Int           @default(0)
+  users         User[]
+  beneficiaries Beneficiary[]
+}
+
+model User {
+  id                   String    @id @default(cuid())
+  username             String    @unique
+  passwordHash         String
+  displayName          String
+  email                String?   @unique
+  phone                String?
+  isActive             Boolean   @default(true)
+  mustChangePassword   Boolean   @default(false)
+  roleId               String
+  role                 Role      @relation(fields: [roleId], references: [id])
+  regionId             String?
+  region               Region?   @relation(fields: [regionId], references: [id])
+  createdAt            DateTime  @default(now())
+  updatedAt            DateTime  @updatedAt
+  createdById          String?
+  createdBy            User?     @relation("UserCreatedBy", fields: [createdById], references: [id])
+  createdUsers         User[]    @relation("UserCreatedBy")
+
+  refreshTokens           RefreshToken[]
+  auditLogs               AuditLog[]               @relation("AuditActor")
+  createdDistributions    DistributionRecord[]     @relation("DistributionCreatedBy")
+  driverDistributions     DistributionRecord[]     @relation("DistributionDriver")
+  completedDistributions  DistributionRecord[]     @relation("CompletedBy")
+  deliveryAssignments     DeliveryAssignment[]     @relation("DeliveryAssignee")
+  assignmentsCreated      DeliveryAssignment[]     @relation("AssignmentCreator")
+  stockMovements          StockMovement[]
+}
+
+model RefreshToken {
+  id        String   @id @default(cuid())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  tokenHash String
+  expiresAt DateTime
+  createdAt DateTime @default(now())
+}
+
+model Beneficiary {
+  id           String            @id @default(cuid())
+  fullName     String
+  phone        String
+  regionId     String?
+  region       Region?           @relation(fields: [regionId], references: [id])
+  district     String?
+  area         String?
+  addressLine  String?
+  familyCount  Int               @default(1)
+  cookingStove Boolean           @default(false)
+  notes        String?
+  medicalNotes String?
+  deliveryNotes String?
+  status       BeneficiaryStatus @default(ACTIVE)
+  deletedAt    DateTime?
+  createdAt    DateTime          @default(now())
+  updatedAt    DateTime          @updatedAt
+
+  categories     BeneficiaryCategory[]
+  distributions  DistributionRecord[]
+  timelineEvents BeneficiaryTimelineEvent[]
+}
+
+model BeneficiaryCategory {
+  id            String      @id @default(cuid())
+  beneficiaryId String
+  beneficiary   Beneficiary @relation(fields: [beneficiaryId], references: [id], onDelete: Cascade)
+  categoryId    String
+  category      AidCategory @relation(fields: [categoryId], references: [id])
+  quantity      Int         @default(1)
+  notes         String?
+  createdAt     DateTime    @default(now())
+
+  @@unique([beneficiaryId, categoryId])
+}
+
+model BeneficiaryTimelineEvent {
+  id            String      @id @default(cuid())
+  beneficiaryId String
+  beneficiary   Beneficiary @relation(fields: [beneficiaryId], references: [id], onDelete: Cascade)
+  titleAr       String
+  detail        String?
+  eventType     String
+  relatedId     String?
+  createdAt     DateTime    @default(now())
+}
+
+model AidCategory {
+  id          String   @id @default(cuid())
+  name        String   @unique
+  description String?
+  isActive    Boolean  @default(true)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  items                 AidCategoryItem[]
+  beneficiaryCategories BeneficiaryCategory[]
+  distItems             DistributionRecordItem[]
+}
+
+model AidCategoryItem {
+  id              String      @id @default(cuid())
+  aidCategoryId   String
+  aidCategory     AidCategory @relation(fields: [aidCategoryId], references: [id], onDelete: Cascade)
+  name            String
+  defaultQuantity Int         @default(1)
+  unit            StockUnit   @default(PIECE)
+  sortOrder       Int         @default(0)
+
+  stockItem StockItem?
+  distItems DistributionRecordItem[]
+}
+
+model StockItem {
+  id                String   @id @default(cuid())
+  aidCategoryItemId String   @unique
+  aidCategoryItem   AidCategoryItem @relation(fields: [aidCategoryItemId], references: [id])
+  quantityOnHand    Int      @default(0)
+  quantityReserved  Int      @default(0)
+  lowStockThreshold Int      @default(10)
+  supplier          String?
+  expiryDate        DateTime?
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+
+  movements         StockMovement[]
+  distributionLines DistributionRecordItem[]
+}
+
+model StockMovement {
+  id            String            @id @default(cuid())
+  stockItemId   String
+  stockItem     StockItem         @relation(fields: [stockItemId], references: [id])
+  quantityDelta Int
+  movementType  StockMovementType
+  referenceType String?
+  referenceId   String?
+  note          String?
+  createdById   String?
+  createdBy     User?             @relation(fields: [createdById], references: [id])
+  createdAt     DateTime          @default(now())
+}
+
+model DistributionRecord {
+  id                     String               @id @default(cuid())
+  beneficiaryId        String
+  beneficiary          Beneficiary          @relation(fields: [beneficiaryId], references: [id])
+  status                 DistributionStatus   @default(PENDING)
+  createdById            String
+  createdBy              User                 @relation("DistributionCreatedBy", fields: [createdById], references: [id])
+  driverId String? @map("assignedDeliveryUserId")
+  driver   User?   @relation("DistributionDriver", fields: [driverId], references: [id])
+  completedById          String?
+  completedBy            User?                @relation("CompletedBy", fields: [completedById], references: [id])
+  notes                  String?
+  deliveryProofNote      String?
+  createdAt              DateTime             @default(now())
+  updatedAt              DateTime             @updatedAt
+  assignedAt             DateTime?
+  outForDeliveryAt       DateTime?
+  deliveredAt            DateTime?
+  cancelledAt            DateTime?
+
+  items       DistributionRecordItem[]
+  assignments DeliveryAssignment[]
+}
+
+model DistributionRecordItem {
+  id                   String             @id @default(cuid())
+  distributionRecordId String
+  distributionRecord   DistributionRecord @relation(fields: [distributionRecordId], references: [id], onDelete: Cascade)
+  aidCategoryId        String
+  aidCategory          AidCategory        @relation(fields: [aidCategoryId], references: [id])
+  aidCategoryItemId    String?
+  aidCategoryItem      AidCategoryItem?   @relation(fields: [aidCategoryItemId], references: [id])
+  stockItemId          String
+  stockItem            StockItem          @relation(fields: [stockItemId], references: [id])
+  quantityPlanned      Int
+  quantityDelivered    Int                @default(0)
+}
+
+model DeliveryAssignment {
+  id                   String             @id @default(cuid())
+  distributionRecordId String
+  distributionRecord   DistributionRecord @relation(fields: [distributionRecordId], references: [id], onDelete: Cascade)
+  deliveryUserId       String
+  deliveryUser         User               @relation("DeliveryAssignee", fields: [deliveryUserId], references: [id])
+  assignedById         String?
+  assignedBy           User?              @relation("AssignmentCreator", fields: [assignedById], references: [id])
+  assignedAt           DateTime           @default(now())
+  note                 String?
+}
+
+model AuditLog {
+  id          String   @id @default(cuid())
+  action      String
+  actorUserId String?
+  actor       User?    @relation("AuditActor", fields: [actorUserId], references: [id])
+  entityType  String
+  entityId    String?
+  details     Json?
+  createdAt   DateTime @default(now())
+}
