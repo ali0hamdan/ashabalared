@@ -119,6 +119,7 @@ model Beneficiary {
   updatedAt    DateTime          @updatedAt
 
   categories     BeneficiaryCategory[]
+  itemNeeds      BeneficiaryItemNeed[]
   distributions  DistributionRecord[]
   timelineEvents BeneficiaryTimelineEvent[]
 }
@@ -134,6 +135,24 @@ model BeneficiaryCategory {
   createdAt     DateTime    @default(now())
 
   @@unique([beneficiaryId, categoryId])
+}
+
+// Per-catalog-item need flags and optional qty/notes (checkbox-style workflow).
+model BeneficiaryItemNeed {
+  id                String          @id @default(cuid())
+  beneficiaryId     String
+  beneficiary       Beneficiary     @relation(fields: [beneficiaryId], references: [id], onDelete: Cascade)
+  aidCategoryItemId String
+  aidCategoryItem   AidCategoryItem @relation(fields: [aidCategoryItemId], references: [id], onDelete: Cascade)
+  needed            Boolean         @default(false)
+  quantity          Int             @default(0)
+  notes             String?
+  createdAt         DateTime        @default(now())
+  updatedAt         DateTime        @updatedAt
+
+  @@unique([beneficiaryId, aidCategoryItemId])
+  @@index([beneficiaryId])
+  @@index([aidCategoryItemId])
 }
 
 model BeneficiaryTimelineEvent {
@@ -169,8 +188,9 @@ model AidCategoryItem {
   unit            StockUnit   @default(PIECE)
   sortOrder       Int         @default(0)
 
-  stockItem StockItem?
-  distItems DistributionRecordItem[]
+  stockItem              StockItem?
+  distItems              DistributionRecordItem[]
+  beneficiaryItemNeeds   BeneficiaryItemNeed[]
 }
 
 model StockItem {

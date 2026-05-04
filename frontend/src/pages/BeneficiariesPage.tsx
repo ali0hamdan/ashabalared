@@ -14,6 +14,22 @@ import { useAuthStore } from '@/store/auth';
 import { parseDeleteBlocked, type DeleteBlockedPayload } from '@/lib/deleteBlocked';
 import { AdminForceDeletePanel } from '@/components/AdminForceDeletePanel';
 
+/** Labels for table chips: catalog items (needed) first, else legacy category names. */
+function beneficiaryNeedChipLabels(b: {
+  itemNeeds?: Array<{ needed?: boolean; quantity?: number; aidCategoryItem?: { name?: string | null } | null }>;
+  categories?: Array<{ quantity?: number; category?: { name?: string | null } | null }>;
+}): string[] {
+  const items = (b.itemNeeds ?? []).filter((n) => n.needed && (n.quantity ?? 0) >= 1);
+  const fromItems = [...new Set(items.map((n) => n.aidCategoryItem?.name).filter((x): x is string => Boolean(x?.trim())))].sort((a, c) =>
+    a.localeCompare(c),
+  );
+  if (fromItems.length) return fromItems;
+  const cats = b.categories ?? [];
+  return [...new Set(cats.map((n) => n.category?.name).filter((x): x is string => Boolean(x?.trim())))].sort((a, c) =>
+    a.localeCompare(c),
+  );
+}
+
 function deleteErrorMessage(e: unknown, fallback: string): string {
   const m = (e as { response?: { data?: { message?: string | string[] } } })?.response?.data?.message;
   if (Array.isArray(m)) return m.filter(Boolean).join(' ');
@@ -151,15 +167,16 @@ export function BeneficiariesPage() {
         ) : rows.length === 0 ? (
           <div className="p-10 text-center text-sm text-muted-foreground">{t('common.noResults')}</div>
         ) : (
-          <table className="w-full min-w-[860px] table-fixed border-separate border-spacing-0 text-sm">
+          <table className="w-full min-w-[1040px] table-fixed border-separate border-spacing-0 text-sm">
             <colgroup>
-              <col className="w-[20%]" />
+              <col className="w-[17%]" />
+              <col className="w-[12%]" />
               <col className="w-[14%]" />
-              <col className="w-[20%]" />
-              <col className="w-[8%]" />
-              <col className="w-[14%]" />
+              <col className="w-[18%]" />
+              <col className="w-[7%]" />
               <col className="w-[10%]" />
-              <col className="w-[14%]" />
+              <col className="w-[9%]" />
+              <col className="w-[13%]" />
             </colgroup>
             <thead>
               <tr className="border-b border-border bg-muted/40">
@@ -171,6 +188,9 @@ export function BeneficiariesPage() {
                 </th>
                 <th scope="col" className="border-e border-border px-3 py-2.5 text-start font-medium text-foreground">
                   {t('beneficiaries.colArea')}
+                </th>
+                <th scope="col" className="border-e border-border px-3 py-2.5 text-start font-medium text-foreground">
+                  {t('beneficiaries.colNeeds')}
                 </th>
                 <th scope="col" className="border-e border-border px-3 py-2.5 text-start font-medium text-foreground">
                   {t('beneficiaries.colFamily')}
@@ -199,6 +219,33 @@ export function BeneficiariesPage() {
                   </td>
                   <td className="border-e border-border px-3 py-2.5 align-middle text-start break-words">
                     {b.area?.trim() ? b.area : t('common.dash')}
+                  </td>
+                  <td className="border-e border-border px-3 py-2.5 align-top text-start">
+                    {(() => {
+                      const labels = beneficiaryNeedChipLabels(b);
+                      if (!labels.length) {
+                        return <span className="text-muted-foreground">{t('common.dash')}</span>;
+                      }
+                      const more = labels.length - 3;
+                      return (
+                        <div className="flex max-w-[14rem] flex-wrap gap-1">
+                          {labels.slice(0, 3).map((name) => (
+                            <span
+                              key={name}
+                              className="inline-block max-w-[7.5rem] truncate rounded-md bg-muted px-1.5 py-0.5 text-xs font-medium text-foreground"
+                              title={name}
+                            >
+                              {name}
+                            </span>
+                          ))}
+                          {more > 0 ? (
+                            <span className="inline-flex items-center rounded-md border border-border bg-background px-1.5 py-0.5 text-xs text-muted-foreground">
+                              {t('beneficiaries.needsMore', { count: more })}
+                            </span>
+                          ) : null}
+                        </div>
+                      );
+                    })()}
                   </td>
                   <td className="border-e border-border px-3 py-2.5 align-middle text-start tabular-nums">{b.familyCount}</td>
                   <td className="border-e border-border px-3 py-2.5 align-middle text-start">

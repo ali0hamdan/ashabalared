@@ -1,14 +1,21 @@
 import { Type } from 'class-transformer';
-import { IsInt, IsOptional, IsString, MaxLength, Min } from 'class-validator';
+import { IsBoolean, IsInt, IsOptional, IsString, MaxLength, Min } from 'class-validator';
 
 export class BeneficiaryCategoryNeedDto {
   @IsString()
   categoryId!: string;
 
+  /** When false, the entry is ignored (use omit from list instead when replacing all needs). */
+  @IsOptional()
+  @IsBoolean()
+  needed?: boolean;
+
+  /** 0 = category selected with no amount yet; optional and defaults to 0 when omitted. */
+  @IsOptional()
   @Type(() => Number)
   @IsInt()
-  @Min(1)
-  quantity!: number;
+  @Min(0)
+  quantity?: number;
 
   @IsOptional()
   @IsString()

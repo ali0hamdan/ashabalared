@@ -2,9 +2,17 @@ import { Button } from '@/components/ui/button';
 import { Card, CardDescription, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
+import { BeneficiaryItemNeedsFields } from '@/components/BeneficiaryItemNeedsFields';
+import {
+  buildCategoryNeedsPayload,
+  buildItemNeedsPayload,
+  normalizeAidCategoriesForForm,
+  validateItemQtyInCheckedCategories,
+} from '@/lib/beneficiaryItemNeeds';
+import { BENEFICIARY_AREA_VALUES, isAllowedBeneficiaryArea } from '@/lib/beneficiaryAreas';
 import { api } from '@/lib/api';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { toast } from 'sonner';
 import { useTranslation } from 'react-i18next';
@@ -21,30 +29,58 @@ export function BeneficiaryNewPage() {
   const [fullName, setFullName] = useState('');
   const [phone, setPhone] = useState('');
   const [area, setArea] = useState('');
+  const [street, setStreet] = useState('');
   const [householdSize, setHouseholdSize] = useState('1');
   const [canCook, setCanCook] = useState(false);
-  const [categoryQty, setCategoryQty] = useState<Record<string, string>>({});
-  const [categoryNotes, setCategoryNotes] = useState<Record<string, string>>({});
+  const [categoryChecked, setCategoryChecked] = useState<Record<string, boolean>>({});
+  const [itemFields, setItemFields] = useState<Record<string, { notes: string; qty: string }>>({});
   const [saving, setSaving] = useState(false);
 
-  const catRows = useMemo(() => (Array.isArray(categories) ? categories.filter((c: { isActive?: boolean }) => c.isActive) : []), [categories]);
+  const catRows = useMemo(() => normalizeAidCategoriesForForm(categories), [categories]);
+
+  useEffect(() => {
+    setCategoryChecked((prev) => {
+      const next = { ...prev };
+      for (const c of catRows) {
+        if (!(c.id in next)) next[c.id] = false;
+      }
+      return next;
+    });
+    setItemFields((prev) => {
+      const next = { ...prev };
+      for (const c of catRows) {
+        for (const it of c.items) {
+          if (!(it.id in next)) next[it.id] = { notes: '', qty: '' };
+        }
+      }
+      return next;
+    });
+  }, [catRows]);
+
+  const hasAnyCatalogItems = useMemo(() => catRows.some((c) => c.items.length > 0), [catRows]);
 
   function validate(): boolean {
     if (!fullName.trim()) {
       toast.error(t('beneficiaryNew.validationFullName'));
       return false;
     }
-    if (!phone.trim()) {
-      toast.error(t('beneficiaryNew.validationPhone'));
+    const phoneTrim = phone.trim();
+    if (phoneTrim.length > 0 && phoneTrim.length < 3) {
+      toast.error(t('beneficiaryNew.validationPhoneMin'));
       return false;
     }
-    if (!area.trim()) {
-      toast.error(t('beneficiaryNew.validationArea'));
+    if (!area.trim() || !isAllowedBeneficiaryArea(area)) {
+      toast.error(t('beneficiaryNew.validationAreaInvalid'));
       return false;
     }
     const n = parseInt(householdSize, 10);
     if (!Number.isFinite(n) || n < 1) {
       toast.error(t('beneficiaryNew.validationHousehold'));
+      return false;
+    }
+    const qtyCheck = validateItemQtyInCheckedCategories(catRows, categoryChecked, itemFields);
+    if (qtyCheck.ok === false) {
+      toast.error(t('beneficiaryNew.validationItemNeedQty', { name: qtyCheck.itemName, category: qtyCheck.categoryName }));
       return false;
     }
     return true;
@@ -53,31 +89,36 @@ export function BeneficiaryNewPage() {
   async function submit() {
     if (!validate()) return;
     const familyCount = parseInt(householdSize, 10);
-    const categoryNeeds: { categoryId: string; quantity: number; notes?: string }[] = [];
-    for (const c of catRows) {
-      const raw = (categoryQty[c.id] ?? '').trim();
-      if (raw === '') continue;
-      const q = parseInt(raw, 10);
-      if (!Number.isFinite(q) || q < 1) {
-        toast.error(t('beneficiaryNew.validationCategoryQty', { name: c.name }));
-        return;
-      }
-      const note = (categoryNotes[c.id] ?? '').trim();
-      categoryNeeds.push({ categoryId: c.id, quantity: q, ...(note ? { notes: note } : {}) });
+    const itemNeeds = buildItemNeedsPayload(catRows, categoryChecked, itemFields);
+    const categoryNeeds = buildCategoryNeedsPayload(catRows, categoryChecked);
+
+    const phoneTrim = phone.trim();
+    const payload: Record<string, unknown> = {
+      fullName: fullName.trim(),
+      area: area.trim(),
+      familyCount,
+      regionId: null,
+      district: null,
+      cookingStove: canCook,
+      categoryNeeds,
+    };
+    const streetTrim = street.trim();
+    if (streetTrim) {
+      payload.street = streetTrim;
     }
+    if (phoneTrim.length >= 3) {
+      payload.phone = phoneTrim;
+    }
+    if (itemNeeds.length) {
+      payload.itemNeeds = itemNeeds;
+    }
+
     setSaving(true);
     try {
-      const { data } = await api.post('/beneficiaries', {
-        fullName: fullName.trim(),
-        phone: phone.trim(),
-        area: area.trim(),
-        familyCount,
-        regionId: null,
-        district: null,
-        cookingStove: canCook,
-        categoryNeeds,
-      });
+      const { data } = await api.post('/beneficiaries', payload);
       await qc.invalidateQueries({ queryKey: ['beneficiaries'] });
+      await qc.invalidateQueries({ queryKey: ['beneficiaries-history'] });
+      await qc.invalidateQueries({ queryKey: ['aid-category-beneficiaries'] });
       toast.success(t('beneficiaryNew.createSuccess'));
       navigate(`/app/beneficiaries/${data.id}`);
     } catch (e: any) {
@@ -105,11 +146,8 @@ export function BeneficiaryNewPage() {
           </div>
           <div className="space-y-2">
             <Label>{t('beneficiaryNew.phone')}</Label>
+            <p className="text-xs text-muted-foreground">{t('beneficiaryNew.phoneOptionalHint')}</p>
             <Input value={phone} onChange={(e) => setPhone(e.target.value)} autoComplete="tel" />
-          </div>
-          <div className="space-y-2">
-            <Label>{t('beneficiaryNew.area')}</Label>
-            <Input value={area} onChange={(e) => setArea(e.target.value)} />
           </div>
           <div className="space-y-2">
             <Label>{t('beneficiaryNew.householdSize')}</Label>
@@ -121,63 +159,50 @@ export function BeneficiaryNewPage() {
               onChange={(e) => setHouseholdSize(e.target.value)}
             />
           </div>
+          <div className="space-y-2 sm:col-span-2">
+            <Label>{t('beneficiaryNew.area')}</Label>
+            <select
+              required
+              className="h-10 w-full rounded-md border border-border bg-card px-3 text-sm"
+              value={area}
+              onChange={(e) => setArea(e.target.value)}
+            >
+              <option value="">{t('beneficiaryNew.areaPlaceholder')}</option>
+              {BENEFICIARY_AREA_VALUES.map((a) => (
+                <option key={a} value={a}>
+                  {a}
+                </option>
+              ))}
+            </select>
+          </div>
+          <div className="space-y-2 sm:col-span-2">
+            <Label>{t('beneficiaryNew.street')}</Label>
+            <p className="text-xs text-muted-foreground">{t('beneficiaryNew.streetHint')}</p>
+            <Input
+              value={street}
+              onChange={(e) => setStreet(e.target.value)}
+              autoComplete="street-address"
+              placeholder={t('beneficiaryNew.streetPlaceholder')}
+            />
+          </div>
         </div>
       </Card>
 
       <Card className="space-y-3 p-4 sm:p-6">
         <CardTitle>{t('beneficiaryNew.needsTitle')}</CardTitle>
-        <CardDescription>{t('beneficiaryNew.needsDesc')}</CardDescription>
-        {catLoading ? (
-          <div className="text-sm text-muted-foreground">{t('common.loading')}</div>
-        ) : (
-          <ul className="space-y-3">
-            <li className="flex items-center gap-3 rounded-lg border border-border bg-muted/30 px-3 py-2.5">
-              <input
-                id="beneficiary-can-cook"
-                type="checkbox"
-                checked={canCook}
-                onChange={(e) => setCanCook(e.target.checked)}
-                className="h-4 w-4 shrink-0 rounded border border-input accent-primary"
-              />
-              <Label htmlFor="beneficiary-can-cook" className="cursor-pointer text-sm font-medium leading-none">
-                {t('beneficiaryNew.canCook')}
-              </Label>
-            </li>
-            {catRows.map((c: { id: string; name: string }) => (
-              <li
-                key={c.id}
-                className="flex flex-col gap-3 rounded-lg border border-border bg-muted/20 p-3 sm:flex-row sm:items-start sm:gap-3"
-              >
-                <span className="min-w-0 shrink-0 text-sm font-medium sm:w-36 sm:pt-2">{c.name}</span>
-                <div className="flex min-w-0 flex-1 flex-col gap-2 sm:flex-row sm:items-start">
-                  <div className="min-w-0 flex-1 space-y-1">
-                    <Label className="text-xs text-muted-foreground sm:sr-only">{t('beneficiaryNew.categoryNotesLabel')}</Label>
-                    <Input
-                      className="h-10"
-                      maxLength={500}
-                      placeholder={t('beneficiaryNew.categoryNotesPlaceholder')}
-                      value={categoryNotes[c.id] ?? ''}
-                      onChange={(e) => setCategoryNotes((m) => ({ ...m, [c.id]: e.target.value }))}
-                    />
-                  </div>
-                  <div className="w-full shrink-0 space-y-1 sm:w-28">
-                    <Label className="text-xs text-muted-foreground sm:sr-only">{t('beneficiaryNew.qtyLabel')}</Label>
-                    <Input
-                      type="number"
-                      min={0}
-                      inputMode="numeric"
-                      className="h-10"
-                      placeholder="0"
-                      value={categoryQty[c.id] ?? ''}
-                      onChange={(e) => setCategoryQty((m) => ({ ...m, [c.id]: e.target.value }))}
-                    />
-                  </div>
-                </div>
-              </li>
-            ))}
-            {catRows.length === 0 ? <li className="text-sm text-muted-foreground">{t('categories.empty')}</li> : null}
-          </ul>
-        )}
+        <CardDescription>{t('beneficiaryNew.needsDescItems')}</CardDescription>
+        <BeneficiaryItemNeedsFields
+          t={t}
+          catLoading={catLoading}
+          catRows={catRows}
+          hasAnyCatalogItems={hasAnyCatalogItems}
+          canCook={canCook}
+          onCanCookChange={setCanCook}
+          categoryChecked={categoryChecked}
+          setCategoryChecked={setCategoryChecked}
+          itemFields={itemFields}
+          setItemFields={setItemFields}
+        />
       </Card>
 
       <div className="flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">

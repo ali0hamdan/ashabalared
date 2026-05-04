@@ -1,4 +1,4 @@
-import { Controller, Get, UseGuards } from '@nestjs/common';
+import { Controller, Get, Query, UseGuards } from '@nestjs/common';
 import { RoleCode } from '@prisma/client';
 import { JwtAuthGuard } from '../common/guards/jwt-auth.guard';
 import { RolesGuard } from '../common/guards/roles.guard';
@@ -12,7 +12,11 @@ export class BeneficiariesHistoryController {
 
   @Get()
   @Roles(RoleCode.SUPER_ADMIN, RoleCode.ADMIN)
-  deliveredHistory() {
-    return this.beneficiaries.deliveredHistory();
+  deliveredHistory(
+    @Query('q') q?: string,
+    @Query('aidCategoryId') aidCategoryId?: string,
+    @Query('aidCategoryItemId') aidCategoryItemId?: string,
+  ) {
+    return this.beneficiaries.deliveredHistory({ q, aidCategoryId, aidCategoryItemId });
   }
 }

@@ -22,6 +22,13 @@ export class CategoriesController {
     return this.categories.list(includeInactive === '1' || includeInactive === 'true');
   }
 
+  /** Beneficiaries with item-level or legacy category-level need for this aid category (lightweight). */
+  @Get(':id/beneficiaries')
+  @Roles(RoleCode.SUPER_ADMIN, RoleCode.ADMIN)
+  beneficiariesNeedingCategory(@Param('id') id: string, @Query('q') q?: string) {
+    return this.categories.beneficiariesNeedingCategory(id, q);
+  }
+
   @Post()
   @Roles(RoleCode.SUPER_ADMIN, RoleCode.ADMIN)
   create(@CurrentUser() actor: AuthUser, @Body() dto: CreateCategoryDto) {

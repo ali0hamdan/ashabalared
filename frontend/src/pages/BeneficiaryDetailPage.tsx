@@ -1,5 +1,13 @@
 import { Card, CardDescription, CardTitle } from '@/components/ui/card';
+import { BeneficiaryItemNeedsFields } from '@/components/BeneficiaryItemNeedsFields';
 import { BeneficiaryStatusBadge, DistributionStatusBadge } from '@/components/StatusBadge';
+import {
+  buildCategoryNeedsPayload,
+  buildItemNeedsPayload,
+  hydrateNeedsFormFromItemNeeds,
+  normalizeAidCategoriesForForm,
+  validateItemQtyInCheckedCategories,
+} from '@/lib/beneficiaryItemNeeds';
 import { api } from '@/lib/api';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useParams } from 'react-router-dom';
@@ -10,6 +18,9 @@ import { useAuthStore } from '@/store/auth';
 import { useEffect, useMemo, useState } from 'react';
 import { toast } from 'sonner';
 import { useTranslation } from 'react-i18next';
+import { ChevronDown } from 'lucide-react';
+import { cn } from '@/lib/utils';
+import { BENEFICIARY_AREA_VALUES, isAllowedBeneficiaryArea } from '@/lib/beneficiaryAreas';
 
 export function BeneficiaryDetailPage() {
   const { t, i18n } = useTranslation();
@@ -34,44 +45,83 @@ export function BeneficiaryDetailPage() {
   const [fullName, setFullName] = useState('');
   const [phone, setPhone] = useState('');
   const [area, setArea] = useState('');
+  const [street, setStreet] = useState('');
   const [householdSize, setHouseholdSize] = useState('1');
   const [canCook, setCanCook] = useState(false);
-  const [categoryQty, setCategoryQty] = useState<Record<string, string>>({});
-  const [categoryNotes, setCategoryNotes] = useState<Record<string, string>>({});
+  const [categoryChecked, setCategoryChecked] = useState<Record<string, boolean>>({});
+  const [itemFields, setItemFields] = useState<Record<string, { notes: string; qty: string }>>({});
+  const [showNotNeeded, setShowNotNeeded] = useState(false);
 
-  const catRows = useMemo(() => (Array.isArray(categories) ? categories.filter((c: { isActive?: boolean }) => c.isActive) : []), [categories]);
+  const catRows = useMemo(() => normalizeAidCategoriesForForm(categories), [categories]);
+
+  const areaSelectOptions = useMemo(() => {
+    const cur = data?.area?.trim() ?? '';
+    if (!cur) return [...BENEFICIARY_AREA_VALUES];
+    if (isAllowedBeneficiaryArea(cur)) return [...BENEFICIARY_AREA_VALUES];
+    return [cur, ...BENEFICIARY_AREA_VALUES];
+  }, [data?.area]);
+
+  const streetDisplay = useMemo(() => {
+    if (!data) return '';
+    const row = data as { street?: string | null; addressLine?: string | null };
+    const raw = typeof row.street === 'string' ? row.street : row.addressLine;
+    return typeof raw === 'string' ? raw.trim() : '';
+  }, [data]);
 
   useEffect(() => {
     if (!editing || !data || categories === undefined) return;
-    const rows = Array.isArray(categories) ? categories.filter((c: { isActive?: boolean }) => c.isActive) : [];
+    const rows = normalizeAidCategoriesForForm(categories);
     setFullName(data.fullName ?? '');
     setPhone(data.phone ?? '');
     setArea(data.area ?? '');
+    const row = data as { street?: string | null; addressLine?: string | null };
+    setStreet(typeof row.street === 'string' ? row.street : typeof row.addressLine === 'string' ? row.addressLine : '');
     setHouseholdSize(String(data.familyCount ?? 1));
     setCanCook(Boolean(data.cookingStove));
-    const next: Record<string, string> = {};
-    const nextNotes: Record<string, string> = {};
-    for (const c of rows) {
-      const row = (data.categories ?? []).find((x: { categoryId?: string }) => x.categoryId === c.id);
-      if (row && typeof (row as { quantity?: number }).quantity === 'number') {
-        next[c.id] = String((row as { quantity: number }).quantity);
-      } else if (row) {
-        next[c.id] = '1';
-      } else {
-        next[c.id] = '';
-      }
-      const rawNote = row ? (row as { notes?: string | null }).notes : null;
-      nextNotes[c.id] = typeof rawNote === 'string' ? rawNote : '';
-    }
-    setCategoryQty(next);
-    setCategoryNotes(nextNotes);
+    const rawNeeds = (data.itemNeeds ?? []) as Array<{
+      aidCategoryItemId: string;
+      needed?: boolean;
+      quantity?: number;
+      notes?: string | null;
+    }>;
+    const beneficiaryCategories = (data.categories ?? []) as Array<{
+      categoryId?: string;
+      category?: { id: string };
+      quantity?: number;
+      notes?: string | null;
+    }>;
+    const h = hydrateNeedsFormFromItemNeeds(rows, rawNeeds, beneficiaryCategories);
+    setCategoryChecked(h.categoryChecked);
+    setItemFields(h.itemFields);
   }, [editing, data, categories]);
+
+  useEffect(() => {
+    if (!editing) return;
+    setCategoryChecked((prev) => {
+      const next = { ...prev };
+      for (const c of catRows) {
+        if (!(c.id in next)) next[c.id] = false;
+      }
+      return next;
+    });
+    setItemFields((prev) => {
+      const next = { ...prev };
+      for (const c of catRows) {
+        for (const it of c.items) {
+          if (!(it.id in next)) next[it.id] = { notes: '', qty: '' };
+        }
+      }
+      return next;
+    });
+  }, [catRows, editing]);
 
   const updateMutation = useMutation({
     mutationFn: async (body: Record<string, unknown>) => api.patch(`/beneficiaries/${id}`, body),
     onSuccess: async () => {
       await qc.invalidateQueries({ queryKey: ['beneficiary', id] });
       await qc.invalidateQueries({ queryKey: ['beneficiaries'] });
+      await qc.invalidateQueries({ queryKey: ['beneficiaries-history'] });
+      await qc.invalidateQueries({ queryKey: ['aid-category-beneficiaries'] });
       setEditing(false);
       toast.success(t('beneficiaryDetail.updateSuccess'));
     },
@@ -79,6 +129,36 @@ export function BeneficiaryDetailPage() {
       toast.error(e?.response?.data?.message ?? t('common.saveError'));
     },
   });
+
+  const neededByCategory = useMemo(() => {
+    const groups = (data?.itemNeedsByCategory ?? []) as Array<{ category: { id: string; name: string }; needs: any[] }>;
+    return groups
+      .map((g) => ({
+        category: g.category,
+        needs: (g.needs ?? []).filter((n: { needed?: boolean }) => n.needed),
+      }))
+      .filter((g) => g.needs.length > 0);
+  }, [data]);
+
+  const notNeededItems = useMemo(
+    () => ((data?.itemNeeds ?? []) as any[]).filter((r) => r.needed === false),
+    [data],
+  );
+
+  /** Category-level rows only when no “needed” catalog items are shown for that category (avoid duplicate headings). */
+  const categoriesWithNeededItems = useMemo(() => {
+    const groups = (data?.itemNeedsByCategory ?? []) as Array<{ category: { id: string }; needs: any[] }>;
+    return new Set(
+      groups
+        .filter((g) => (g.needs ?? []).some((n: { needed?: boolean }) => n.needed))
+        .map((g) => g.category.id),
+    );
+  }, [data]);
+
+  const legacyCategoryRows = useMemo(() => {
+    const all = (data?.categories ?? []) as any[];
+    return all.filter((n) => !categoriesWithNeededItems.has(n.category?.id));
+  }, [data, categoriesWithNeededItems]);
 
   const dateLocale = i18n.language.startsWith('ar') ? 'ar' : 'en-US';
 
@@ -93,17 +173,28 @@ export function BeneficiaryDetailPage() {
       toast.error(t('beneficiaryNew.validationFullName'));
       return false;
     }
-    if (!phone.trim()) {
-      toast.error(t('beneficiaryNew.validationPhone'));
+    const phoneTrim = phone.trim();
+    if (phoneTrim.length > 0 && phoneTrim.length < 3) {
+      toast.error(t('beneficiaryNew.validationPhoneMin'));
       return false;
     }
     if (!area.trim()) {
       toast.error(t('beneficiaryNew.validationArea'));
       return false;
     }
+    const areaTrim = area.trim();
+    if (!isAllowedBeneficiaryArea(areaTrim) && areaTrim !== (data.area ?? '').trim()) {
+      toast.error(t('beneficiaryNew.validationAreaInvalid'));
+      return false;
+    }
     const n = parseInt(householdSize, 10);
     if (!Number.isFinite(n) || n < 1) {
       toast.error(t('beneficiaryNew.validationHousehold'));
+      return false;
+    }
+    const qtyCheck = validateItemQtyInCheckedCategories(catRows, categoryChecked, itemFields);
+    if (qtyCheck.ok === false) {
+      toast.error(t('beneficiaryNew.validationItemNeedQty', { name: qtyCheck.itemName, category: qtyCheck.categoryName }));
       return false;
     }
     return true;
@@ -112,28 +203,30 @@ export function BeneficiaryDetailPage() {
   function saveEdit() {
     if (!validateEdit()) return;
     const familyCount = parseInt(householdSize, 10);
-    const categoryNeeds: { categoryId: string; quantity: number; notes?: string }[] = [];
-    for (const c of catRows) {
-      const raw = (categoryQty[c.id] ?? '').trim();
-      if (raw === '') continue;
-      const q = parseInt(raw, 10);
-      if (!Number.isFinite(q) || q < 1) {
-        toast.error(t('beneficiaryNew.validationCategoryQty', { name: c.name }));
-        return;
-      }
-      const note = (categoryNotes[c.id] ?? '').trim();
-      categoryNeeds.push({ categoryId: c.id, quantity: q, ...(note ? { notes: note } : {}) });
-    }
-    updateMutation.mutate({
+    const itemNeeds = buildItemNeedsPayload(catRows, categoryChecked, itemFields);
+    const beneficiaryCategories = (data.categories ?? []) as Array<{
+      categoryId?: string;
+      category?: { id: string };
+      quantity?: number;
+      notes?: string | null;
+    }>;
+    const categoryNeeds = buildCategoryNeedsPayload(catRows, categoryChecked, beneficiaryCategories);
+    const body: Record<string, unknown> = {
       fullName: fullName.trim(),
-      phone: phone.trim(),
       area: area.trim(),
+      street: street.trim(),
       familyCount,
       regionId: null,
       district: null,
       cookingStove: canCook,
+      itemNeeds,
       categoryNeeds,
-    });
+    };
+    const phoneTrim = phone.trim();
+    if (phoneTrim.length >= 3) {
+      body.phone = phoneTrim;
+    }
+    updateMutation.mutate(body);
   }
 
   return (
@@ -166,64 +259,54 @@ export function BeneficiaryDetailPage() {
             </div>
             <div className="space-y-2">
               <Label>{t('beneficiaryNew.phone')}</Label>
-              <Input value={phone} onChange={(e) => setPhone(e.target.value)} />
-            </div>
-            <div className="space-y-2">
-              <Label>{t('beneficiaryNew.area')}</Label>
-              <Input value={area} onChange={(e) => setArea(e.target.value)} />
+              <p className="text-xs text-muted-foreground">{t('beneficiaryNew.phoneOptionalHint')}</p>
+              <Input value={phone} onChange={(e) => setPhone(e.target.value)} autoComplete="tel" />
             </div>
             <div className="space-y-2">
               <Label>{t('beneficiaryNew.householdSize')}</Label>
               <Input type="number" min={1} value={householdSize} onChange={(e) => setHouseholdSize(e.target.value)} />
             </div>
+            <div className="space-y-2 sm:col-span-2">
+              <Label>{t('beneficiaryNew.area')}</Label>
+              <select
+                className="h-10 w-full rounded-md border border-border bg-card px-3 text-sm"
+                value={area}
+                onChange={(e) => setArea(e.target.value)}
+              >
+                <option value="">{t('beneficiaryNew.areaPlaceholder')}</option>
+                {areaSelectOptions.map((a) => (
+                  <option key={a} value={a}>
+                    {a}
+                  </option>
+                ))}
+              </select>
+            </div>
+            <div className="space-y-2 sm:col-span-2">
+              <Label>{t('beneficiaryNew.street')}</Label>
+              <p className="text-xs text-muted-foreground">{t('beneficiaryNew.streetHint')}</p>
+              <Input
+                value={street}
+                onChange={(e) => setStreet(e.target.value)}
+                autoComplete="street-address"
+                placeholder={t('beneficiaryNew.streetPlaceholder')}
+              />
+            </div>
           </div>
           <div className="space-y-3 border-t border-border pt-4">
             <div className="font-medium">{t('beneficiaryNew.needsTitle')}</div>
-            <ul className="space-y-3">
-              <li className="flex items-center gap-3 rounded-lg border border-border bg-muted/30 px-3 py-2.5">
-                <input
-                  id="beneficiary-edit-can-cook"
-                  type="checkbox"
-                  checked={canCook}
-                  onChange={(e) => setCanCook(e.target.checked)}
-                  className="h-4 w-4 shrink-0 rounded border border-input accent-primary"
-                />
-                <Label htmlFor="beneficiary-edit-can-cook" className="cursor-pointer text-sm font-medium leading-none">
-                  {t('beneficiaryNew.canCook')}
-                </Label>
-              </li>
-              {catRows.map((c: { id: string; name: string }) => (
-                <li
-                  key={c.id}
-                  className="flex flex-col gap-3 rounded-lg border border-border bg-muted/20 p-3 sm:flex-row sm:items-start sm:gap-3"
-                >
-                  <span className="min-w-0 shrink-0 text-sm font-medium sm:w-36 sm:pt-2">{c.name}</span>
-                  <div className="flex min-w-0 flex-1 flex-col gap-2 sm:flex-row sm:items-start">
-                    <div className="min-w-0 flex-1 space-y-1">
-                      <Label className="text-xs text-muted-foreground sm:sr-only">{t('beneficiaryNew.categoryNotesLabel')}</Label>
-                      <Input
-                        className="h-10"
-                        maxLength={500}
-                        placeholder={t('beneficiaryNew.categoryNotesPlaceholder')}
-                        value={categoryNotes[c.id] ?? ''}
-                        onChange={(e) => setCategoryNotes((m) => ({ ...m, [c.id]: e.target.value }))}
-                      />
-                    </div>
-                    <div className="w-full shrink-0 space-y-1 sm:w-28">
-                      <Label className="text-xs text-muted-foreground sm:sr-only">{t('beneficiaryNew.qtyLabel')}</Label>
-                      <Input
-                        type="number"
-                        min={0}
-                        className="h-10"
-                        placeholder="0"
-                        value={categoryQty[c.id] ?? ''}
-                        onChange={(e) => setCategoryQty((m) => ({ ...m, [c.id]: e.target.value }))}
-                      />
-                    </div>
-                  </div>
-                </li>
-              ))}
-            </ul>
+            <p className="text-sm text-muted-foreground">{t('beneficiaryNew.needsDescItems')}</p>
+            <BeneficiaryItemNeedsFields
+              t={t}
+              catLoading={categories === undefined}
+              catRows={catRows}
+              hasAnyCatalogItems={catRows.some((c) => c.items.length > 0)}
+              canCook={canCook}
+              onCanCookChange={setCanCook}
+              categoryChecked={categoryChecked}
+              setCategoryChecked={setCategoryChecked}
+              itemFields={itemFields}
+              setItemFields={setItemFields}
+            />
           </div>
           <div className="flex justify-end gap-2">
             <Button type="button" variant="outline" onClick={() => setEditing(false)}>
@@ -248,6 +331,10 @@ export function BeneficiaryDetailPage() {
                 <dt className="text-muted-foreground">{t('beneficiaryNew.area')}</dt>
                 <dd className="font-medium">{data.area?.trim() ? data.area : t('common.dash')}</dd>
               </div>
+              <div className="sm:col-span-2">
+                <dt className="text-muted-foreground">{t('beneficiaryNew.street')}</dt>
+                <dd className="font-medium whitespace-pre-wrap">{streetDisplay ? streetDisplay : t('common.dash')}</dd>
+              </div>
               <div>
                 <dt className="text-muted-foreground">{t('beneficiaryNew.householdSize')}</dt>
                 <dd className="font-medium">{data.familyCount}</dd>
@@ -266,26 +353,111 @@ export function BeneficiaryDetailPage() {
           </Card>
 
           <Card>
-            <CardTitle>{t('beneficiaryDetail.needsTitle')}</CardTitle>
-            <CardDescription className="mt-2">{t('beneficiaryDetail.needsDesc')}</CardDescription>
-            <ul className="mt-3 space-y-2 text-sm">
-              {(data.categories ?? []).map(
-                (n: { id: string; quantity?: number; notes?: string | null; category?: { name?: string } }) => (
-                  <li key={n.id} className="rounded-lg border border-border bg-muted/20 px-3 py-2">
-                    <div>
-                      <span className="font-medium">{n.category?.name}</span>
-                      <span className="ms-2 text-muted-foreground">
-                        × {typeof n.quantity === 'number' ? n.quantity : 1}
-                      </span>
-                    </div>
-                    {n.notes?.trim() ? (
-                      <p className="mt-1 text-muted-foreground whitespace-pre-wrap">{n.notes.trim()}</p>
-                    ) : null}
-                  </li>
-                ),
-              )}
-              {(data.categories ?? []).length === 0 ? <li className="text-muted-foreground">{t('common.none')}</li> : null}
-            </ul>
+            <CardTitle>{t('beneficiaryDetail.itemNeedsTitle')}</CardTitle>
+            <CardDescription className="mt-2">{t('beneficiaryDetail.itemNeedsDesc')}</CardDescription>
+
+            {neededByCategory.length > 0 ? (
+              <div className="mt-3 space-y-4">
+                {neededByCategory.map((g) => (
+                  <div key={g.category.id}>
+                    <div className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">{g.category.name}</div>
+                    <ul className="mt-2 space-y-2">
+                      {g.needs.map((n: { id: string; quantity?: number; notes?: string | null; aidCategoryItem?: { name?: string } }) => (
+                        <li key={n.id} className="rounded-lg border border-border bg-muted/20 px-3 py-2 text-sm">
+                          <div>
+                            <span className="font-medium">{n.aidCategoryItem?.name ?? t('common.dash')}</span>
+                            <span className="ms-2 text-muted-foreground">
+                              {t('beneficiaryDetail.qtyTimes', { qty: typeof n.quantity === 'number' ? n.quantity : 0 })}
+                            </span>
+                          </div>
+                          {n.notes?.trim() ? (
+                            <p className="mt-1 text-muted-foreground whitespace-pre-wrap">{n.notes.trim()}</p>
+                          ) : null}
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+                ))}
+              </div>
+            ) : legacyCategoryRows.length > 0 ? (
+              <div className="mt-3">
+                <p className="mb-2 text-xs text-muted-foreground">{t('beneficiaryDetail.legacyCategoryNeeds')}</p>
+                <ul className="space-y-2 text-sm">
+                  {legacyCategoryRows.map((n: { id: string; quantity?: number; notes?: string | null; category?: { name?: string } }) => {
+                    const q = typeof n.quantity === 'number' ? n.quantity : 0;
+                    return (
+                    <li key={n.id} className="rounded-lg border border-border bg-muted/20 px-3 py-2">
+                      <div>
+                        <span className="font-medium">{n.category?.name}</span>
+                        {q >= 1 ? (
+                          <span className="ms-2 text-muted-foreground">× {q}</span>
+                        ) : n.notes?.trim() ? null : (
+                          <span className="ms-2 text-xs text-muted-foreground">{t('beneficiaryDetail.categoryNeedNoAmount')}</span>
+                        )}
+                      </div>
+                      {n.notes?.trim() ? <p className="mt-1 text-muted-foreground whitespace-pre-wrap">{n.notes.trim()}</p> : null}
+                    </li>
+                    );
+                  })}
+                </ul>
+              </div>
+            ) : (
+              <p className="mt-3 text-sm text-muted-foreground">{t('common.none')}</p>
+            )}
+
+            {legacyCategoryRows.length > 0 && neededByCategory.length > 0 ? (
+              <div className="mt-4 border-t border-border pt-4">
+                <div className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+                  {t('beneficiaryDetail.legacyCategoryNeeds')}
+                </div>
+                <ul className="mt-2 space-y-2 text-sm">
+                  {legacyCategoryRows.map((n: { id: string; quantity?: number; notes?: string | null; category?: { name?: string } }) => {
+                    const q = typeof n.quantity === 'number' ? n.quantity : 0;
+                    return (
+                    <li key={n.id} className="rounded-lg border border-border bg-muted/30 px-3 py-2">
+                      <div>
+                        <span className="font-medium">{n.category?.name}</span>
+                        {q >= 1 ? (
+                          <span className="ms-2 text-muted-foreground">× {q}</span>
+                        ) : n.notes?.trim() ? null : (
+                          <span className="ms-2 text-xs text-muted-foreground">{t('beneficiaryDetail.categoryNeedNoAmount')}</span>
+                        )}
+                      </div>
+                      {n.notes?.trim() ? <p className="mt-1 text-muted-foreground whitespace-pre-wrap">{n.notes.trim()}</p> : null}
+                    </li>
+                    );
+                  })}
+                </ul>
+              </div>
+            ) : null}
+
+            {notNeededItems.length > 0 ? (
+              <div className="mt-4 border-t border-border pt-3">
+                <button
+                  type="button"
+                  className="flex w-full items-center justify-between gap-2 rounded-md py-1 text-start text-sm font-medium text-foreground hover:bg-muted/50"
+                  onClick={() => setShowNotNeeded((v) => !v)}
+                  aria-expanded={showNotNeeded}
+                >
+                  <span>{t('beneficiaryDetail.notNeededTitle', { count: notNeededItems.length })}</span>
+                  <ChevronDown className={cn('h-4 w-4 shrink-0 text-muted-foreground transition-transform', showNotNeeded && 'rotate-180')} />
+                </button>
+                {showNotNeeded ? (
+                  <ul className="mt-2 space-y-1.5 text-sm">
+                    {notNeededItems.map((r: { id: string; aidCategoryItem?: { name?: string; aidCategory?: { name?: string } } }) => (
+                      <li key={r.id} className="text-muted-foreground">
+                        <span className="font-medium text-foreground/90">{r.aidCategoryItem?.aidCategory?.name ?? t('common.dash')}</span>
+                        <span className="text-muted-foreground"> — </span>
+                        {r.aidCategoryItem?.name ?? t('common.dash')}
+                      </li>
+                    ))}
+                  </ul>
+                ) : (
+                  <p className="mt-1 text-xs text-muted-foreground">{t('beneficiaryDetail.notNeededHint')}</p>
+                )}
+              </div>
+            ) : null}
+
             <div className="mt-4 rounded-lg border border-border bg-muted/20 p-3 text-sm">
               <div className="text-muted-foreground">{t('beneficiaryDetail.deliveredCountLabel')}</div>
               <div className="text-2xl font-bold">{deliveredCount}</div>

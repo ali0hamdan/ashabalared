@@ -5,7 +5,7 @@ import { Label } from '@/components/ui/label';
 import { Button } from '@/components/ui/button';
 import { api } from '@/lib/api';
 import { useQuery } from '@tanstack/react-query';
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { ChevronDown, ChevronRight } from 'lucide-react';
 
@@ -30,28 +30,68 @@ type HistoryRow = {
   deliveries: HistoryDelivery[];
 };
 
+type AidCat = {
+  id: string;
+  name: string;
+  isActive?: boolean;
+  items?: Array<{ id: string; name: string; sortOrder?: number }>;
+};
+
 export function BeneficiariesHistoryPage() {
   const { t, i18n } = useTranslation();
-  const [q, setQ] = useState('');
+  const [qInput, setQInput] = useState('');
+  const [qDebounced, setQDebounced] = useState('');
+  const [aidCategoryId, setAidCategoryId] = useState('');
+  const [aidCategoryItemId, setAidCategoryItemId] = useState('');
   const [open, setOpen] = useState<Record<string, boolean>>({});
 
+  useEffect(() => {
+    const tmr = window.setTimeout(() => setQDebounced(qInput.trim()), 350);
+    return () => window.clearTimeout(tmr);
+  }, [qInput]);
+
+  const { data: categories } = useQuery({
+    queryKey: ['categories', 'beneficiaries-history-filters'],
+    queryFn: async () => (await api.get('/aid-categories')).data,
+  });
+
+  const catOpts = useMemo(() => {
+    const list = Array.isArray(categories) ? (categories as AidCat[]) : [];
+    return [...list].filter((c) => c.isActive !== false).sort((a, b) => a.name.localeCompare(b.name));
+  }, [categories]);
+
+  const itemOpts = useMemo(() => {
+    const c = catOpts.find((x) => x.id === aidCategoryId);
+    return [...(c?.items ?? [])].sort(
+      (a, b) => (a.sortOrder ?? 0) - (b.sortOrder ?? 0) || a.name.localeCompare(b.name),
+    );
+  }, [catOpts, aidCategoryId]);
+
+  useEffect(() => {
+    if (!aidCategoryId) {
+      setAidCategoryItemId('');
+      return;
+    }
+    if (aidCategoryItemId && !itemOpts.some((it) => it.id === aidCategoryItemId)) {
+      setAidCategoryItemId('');
+    }
+  }, [aidCategoryId, aidCategoryItemId, itemOpts]);
+
   const { data, isLoading } = useQuery({
-    queryKey: ['beneficiaries-history'],
-    queryFn: async () => (await api.get<HistoryRow[]>('/beneficiaries-history')).data,
+    queryKey: ['beneficiaries-history', qDebounced, aidCategoryId, aidCategoryItemId],
+    queryFn: async () =>
+      (
+        await api.get<HistoryRow[]>('/beneficiaries-history', {
+          params: {
+            q: qDebounced || undefined,
+            aidCategoryId: aidCategoryId || undefined,
+            aidCategoryItemId: aidCategoryItemId || undefined,
+          },
+        })
+      ).data,
   });
 
   const rows = useMemo(() => (Array.isArray(data) ? data : []), [data]);
-
-  const filtered = useMemo(() => {
-    const s = q.trim().toLowerCase();
-    if (!s) return rows;
-    return rows.filter((b) => {
-      const name = (b.fullName ?? '').toLowerCase();
-      const phone = (b.phone ?? '').toLowerCase();
-      const area = (b.area ?? '').toLowerCase();
-      return name.includes(s) || phone.includes(s) || area.includes(s);
-    });
-  }, [rows, q]);
 
   const dateLocale = i18n.language.startsWith('ar') ? 'ar' : 'en-US';
 
@@ -66,6 +106,15 @@ export function BeneficiariesHistoryPage() {
     return t('common.dash');
   }
 
+  function clearFilters() {
+    setQInput('');
+    setQDebounced('');
+    setAidCategoryId('');
+    setAidCategoryItemId('');
+  }
+
+  const hasActiveFilters = Boolean(qDebounced || aidCategoryId || aidCategoryItemId);
+
   return (
     <div className="space-y-4">
       <div>
@@ -73,26 +122,73 @@ export function BeneficiariesHistoryPage() {
         <p className="text-sm text-muted-foreground">{t('beneficiariesHistory.subtitle')}</p>
       </div>
 
-      <Card className="p-4">
-        <Label className="text-sm font-medium">{t('beneficiariesHistory.searchLabel')}</Label>
-        <Input
-          className="mt-2 max-w-md"
-          placeholder={t('beneficiariesHistory.searchPlaceholder')}
-          value={q}
-          onChange={(e) => setQ(e.target.value)}
-          autoComplete="off"
-        />
+      <Card className="space-y-4 p-4">
+        <div>
+          <CardTitle className="text-base">{t('beneficiariesHistory.filtersTitle')}</CardTitle>
+          <CardDescription className="mt-1">{t('beneficiariesHistory.filtersDesc')}</CardDescription>
+        </div>
+        <div className="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-4">
+          <div className="space-y-2 md:col-span-2">
+            <Label className="text-sm font-medium">{t('beneficiariesHistory.searchLabel')}</Label>
+            <Input
+              placeholder={t('beneficiariesHistory.searchPlaceholder')}
+              value={qInput}
+              onChange={(e) => setQInput(e.target.value)}
+              autoComplete="off"
+            />
+          </div>
+          <div className="space-y-2">
+            <Label className="text-sm font-medium">{t('beneficiariesHistory.filterCategory')}</Label>
+            <select
+              className="h-10 w-full rounded-md border border-border bg-card px-3 text-sm"
+              value={aidCategoryId}
+              onChange={(e) => {
+                setAidCategoryId(e.target.value);
+                setAidCategoryItemId('');
+              }}
+            >
+              <option value="">{t('beneficiariesHistory.filterCategoryAll')}</option>
+              {catOpts.map((c) => (
+                <option key={c.id} value={c.id}>
+                  {c.name}
+                </option>
+              ))}
+            </select>
+          </div>
+          <div className="space-y-2">
+            <Label className="text-sm font-medium">{t('beneficiariesHistory.filterItem')}</Label>
+            <select
+              className="h-10 w-full rounded-md border border-border bg-card px-3 text-sm disabled:opacity-60"
+              value={aidCategoryItemId}
+              disabled={!aidCategoryId}
+              onChange={(e) => setAidCategoryItemId(e.target.value)}
+            >
+              <option value="">{t('beneficiariesHistory.filterItemAll')}</option>
+              {itemOpts.map((it) => (
+                <option key={it.id} value={it.id}>
+                  {it.name}
+                </option>
+              ))}
+            </select>
+            {!aidCategoryId ? <p className="text-xs text-muted-foreground">{t('beneficiariesHistory.filterItemHint')}</p> : null}
+          </div>
+        </div>
+        {hasActiveFilters ? (
+          <Button type="button" variant="outline" className="h-9 text-xs" onClick={() => clearFilters()}>
+            {t('beneficiariesHistory.filterClear')}
+          </Button>
+        ) : null}
       </Card>
 
       {isLoading ? (
         <div className="text-sm text-muted-foreground">{t('common.loading')}</div>
-      ) : filtered.length === 0 ? (
+      ) : rows.length === 0 ? (
         <Card className="p-8 text-center text-sm text-muted-foreground">
-          {rows.length === 0 ? t('beneficiariesHistory.emptyDb') : t('beneficiariesHistory.empty')}
+          {!hasActiveFilters ? t('beneficiariesHistory.emptyDb') : t('beneficiariesHistory.empty')}
         </Card>
       ) : (
         <ul className="space-y-3">
-          {filtered.map((b) => {
+          {rows.map((b) => {
             const expanded = Boolean(open[b.id]);
             return (
               <li key={b.id}>
