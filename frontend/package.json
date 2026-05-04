@@ -6,7 +6,8 @@
   "scripts": {
     "dev": "vite",
     "typecheck": "tsc -b",
-    "build": "tsc -b && vite build",
+    "build": "vite build",
+    "start": "serve -s dist -l $PORT",
     "lint": "eslint .",
     "preview": "vite preview"
   },
@@ -25,6 +26,7 @@
     "react-is": "^19.0.0",
     "react-router-dom": "^7.14.0",
     "recharts": "^3.8.1",
+    "serve": "^14.2.4",
     "sonner": "^2.0.7",
     "tailwind-merge": "^3.5.0",
     "zod": "^4.3.6",
