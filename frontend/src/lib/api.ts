@@ -8,8 +8,18 @@ function resolveApiBaseUrl(): string {
   const base = typeof raw === 'string' ? raw.trim().replace(/\/$/, '') : '';
   if (!base) {
     throw new Error(
-      'VITE_API_URL is not set. Add it to frontend/.env, e.g. VITE_API_URL=http://localhost:3000 (see .env.example).',
+      'VITE_API_URL is not set. Add it to frontend/.env (see .env.example). For production use https://…',
     );
+  }
+  if (import.meta.env.PROD) {
+    if (base.startsWith('http://') || /\blocalhost\b/i.test(base) || /127\.0\.0\.1/.test(base)) {
+      throw new Error(
+        'Invalid VITE_API_URL for production build: use https and a non-localhost API origin.',
+      );
+    }
+    if (!base.startsWith('https://')) {
+      throw new Error('Invalid VITE_API_URL for production build: URL must start with https://');
+    }
   }
   return base;
 }
