@@ -1,5 +1,14 @@
-import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
-import { DistributionStatus, Prisma, RoleCode, StockMovementType } from '@prisma/client';
+import {
+  BadRequestException,
+  Injectable,
+  NotFoundException,
+} from '@nestjs/common';
+import {
+  DistributionStatus,
+  Prisma,
+  RoleCode,
+  StockMovementType,
+} from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { AuditService } from '../audit/audit.service';
 import type { AuthUser } from '../common/decorators/current-user.decorator';
@@ -39,7 +48,9 @@ const stockItemResponseSelect = {
   },
 } satisfies Prisma.StockItemSelect;
 
-type StockRowPayload = Prisma.StockItemGetPayload<{ select: typeof stockItemResponseSelect }>;
+type StockRowPayload = Prisma.StockItemGetPayload<{
+  select: typeof stockItemResponseSelect;
+}>;
 
 @Injectable()
 export class StockService {
@@ -48,7 +59,9 @@ export class StockService {
     private readonly audit: AuditService,
   ) {}
 
-  private async deliveredTotalsByStockItemId(stockItemIds: string[]): Promise<Map<string, number>> {
+  private async deliveredTotalsByStockItemId(
+    stockItemIds: string[],
+  ): Promise<Map<string, number>> {
     if (stockItemIds.length === 0) return new Map();
     const sums = await this.prisma.distributionRecordItem.groupBy({
       by: ['stockItemId'],
@@ -58,7 +71,9 @@ export class StockService {
       },
       _sum: { quantityDelivered: true },
     });
-    return new Map(sums.map((s) => [s.stockItemId, s._sum.quantityDelivered ?? 0]));
+    return new Map(
+      sums.map((s) => [s.stockItemId, s._sum.quantityDelivered ?? 0]),
+    );
   }
 
   async list(query: {
@@ -83,7 +98,9 @@ export class StockService {
       orderBy: { updatedAt: 'desc' },
       select: stockItemResponseSelect,
     });
-    const deliveredMap = await this.deliveredTotalsByStockItemId(rows.map((r) => r.id));
+    const deliveredMap = await this.deliveredTotalsByStockItemId(
+      rows.map((r) => r.id),
+    );
     let out = rows.map((r) => this.mapStockRow(r, deliveredMap.get(r.id) ?? 0));
     if (query.lowOnly) out = out.filter((r) => r.isLow);
     if (query.hasAvailable) out = out.filter((r) => r.remaining > 0);
@@ -96,7 +113,8 @@ export class StockService {
       include: { stockItem: true },
     });
     if (!item) throw new NotFoundException('بند الفئة غير موجود');
-    if (item.stockItem) throw new BadRequestException('يوجد مخزون مسجل لهذا البند مسبقاً');
+    if (item.stockItem)
+      throw new BadRequestException('يوجد مخزون مسجل لهذا البند مسبقاً');
     const qty = body.quantityOnHand ?? 0;
     if (qty < 0) throw new BadRequestException('كمية غير صالحة');
     const stock = await this.prisma.stockItem.create({
@@ -123,11 +141,22 @@ export class StockService {
   async update(actorId: string, id: string, body: UpdateStockItemDto) {
     const cur = await this.prisma.stockItem.findUnique({ where: { id } });
     if (!cur) throw new NotFoundException();
-    const nextOnHand = body.quantityOnHand !== undefined ? body.quantityOnHand : cur.quantityOnHand;
-    const nextReserved = body.quantityReserved !== undefined ? body.quantityReserved : cur.quantityReserved;
-    const nextThreshold = body.lowStockThreshold !== undefined ? body.lowStockThreshold : cur.lowStockThreshold;
-    if (nextOnHand < 0 || nextReserved < 0) throw new BadRequestException('كميات سالبة غير مسموحة');
-    if (nextOnHand < nextReserved) throw new BadRequestException('المتاح لا يمكن أن يكون أقل من المحجوز');
+    const nextOnHand =
+      body.quantityOnHand !== undefined
+        ? body.quantityOnHand
+        : cur.quantityOnHand;
+    const nextReserved =
+      body.quantityReserved !== undefined
+        ? body.quantityReserved
+        : cur.quantityReserved;
+    const nextThreshold =
+      body.lowStockThreshold !== undefined
+        ? body.lowStockThreshold
+        : cur.lowStockThreshold;
+    if (nextOnHand < 0 || nextReserved < 0)
+      throw new BadRequestException('كميات سالبة غير مسموحة');
+    if (nextOnHand < nextReserved)
+      throw new BadRequestException('المتاح لا يمكن أن يكون أقل من المحجوز');
     const updated = await this.prisma.stockItem.update({
       where: { id },
       data: {
@@ -135,7 +164,12 @@ export class StockService {
         quantityReserved: nextReserved,
         lowStockThreshold: nextThreshold,
         supplier: body.supplier === undefined ? undefined : body.supplier,
-        expiryDate: body.expiryDate === undefined ? undefined : body.expiryDate ? new Date(body.expiryDate) : null,
+        expiryDate:
+          body.expiryDate === undefined
+            ? undefined
+            : body.expiryDate
+              ? new Date(body.expiryDate)
+              : null,
       },
       select: stockItemResponseSelect,
     });
@@ -150,13 +184,19 @@ export class StockService {
     return this.mapStockRow(updated, deliveredMap.get(updated.id) ?? 0);
   }
 
-  async adjust(actorId: string, id: string, body: { delta: number; note?: string }) {
-    if (body.delta === undefined || body.delta === null) throw new BadRequestException('delta مطلوب');
+  async adjust(
+    actorId: string,
+    id: string,
+    body: { delta: number; note?: string },
+  ) {
+    if (body.delta === undefined || body.delta === null)
+      throw new BadRequestException('delta مطلوب');
     const item = await this.prisma.stockItem.findUnique({ where: { id } });
     if (!item) throw new NotFoundException();
     const next = item.quantityOnHand + body.delta;
     if (next < 0) throw new BadRequestException('لا يمكن جعل المخزون سالباً');
-    if (next < item.quantityReserved) throw new BadRequestException('الكمية أقل من المحجوز');
+    if (next < item.quantityReserved)
+      throw new BadRequestException('الكمية أقل من المحجوز');
     const updated = await this.prisma.$transaction(async (tx) => {
       const u = await tx.stockItem.update({
         where: { id },
@@ -167,7 +207,10 @@ export class StockService {
         data: {
           stockItemId: id,
           quantityDelta: body.delta,
-          movementType: body.delta >= 0 ? StockMovementType.ADJUSTMENT_IN : StockMovementType.ADJUSTMENT_OUT,
+          movementType:
+            body.delta >= 0
+              ? StockMovementType.ADJUSTMENT_IN
+              : StockMovementType.ADJUSTMENT_OUT,
           note: body.note,
           createdById: actorId,
         },
@@ -185,7 +228,10 @@ export class StockService {
     return this.mapStockRow(updated, deliveredMap.get(updated.id) ?? 0);
   }
 
-  private async cascadeDeleteStockItem(tx: Prisma.TransactionClient, stockItemId: string): Promise<void> {
+  private async cascadeDeleteStockItem(
+    tx: Prisma.TransactionClient,
+    stockItemId: string,
+  ): Promise<void> {
     await tx.distributionRecordItem.deleteMany({ where: { stockItemId } });
     await tx.stockMovement.deleteMany({ where: { stockItemId } });
     await tx.stockItem.delete({ where: { id: stockItemId } });
@@ -209,15 +255,25 @@ export class StockService {
 
   private assertForceConfirmation(confirmationText: string) {
     if (String(confirmationText ?? '').trim() !== 'DELETE') {
-      throw new BadRequestException('Confirmation must be the word DELETE (exact match).');
+      throw new BadRequestException(
+        'Confirmation must be the word DELETE (exact match).',
+      );
     }
   }
 
   /**
    * Same cascade as {@link remove}, with typed confirmation (Admin / Super-admin).
    */
-  async forceDelete(actor: AuthUser, id: string, confirmationText: string, reason?: string) {
-    if (actor.roleCode !== RoleCode.SUPER_ADMIN && actor.roleCode !== RoleCode.ADMIN) {
+  async forceDelete(
+    actor: AuthUser,
+    id: string,
+    confirmationText: string,
+    reason?: string,
+  ) {
+    if (
+      actor.roleCode !== RoleCode.SUPER_ADMIN &&
+      actor.roleCode !== RoleCode.ADMIN
+    ) {
       throw new BadRequestException();
     }
     this.assertForceConfirmation(confirmationText);

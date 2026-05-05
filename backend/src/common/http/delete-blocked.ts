@@ -12,7 +12,11 @@ export type DeleteBlockedBody = {
   meta?: Record<string, unknown>;
 };
 
-export function deleteBlocked(message: string, blockingRelations: string[], meta?: Record<string, unknown>): HttpException {
+export function deleteBlocked(
+  message: string,
+  blockingRelations: string[],
+  meta?: Record<string, unknown>,
+): HttpException {
   const body: DeleteBlockedBody = {
     statusCode: HttpStatus.CONFLICT,
     code: DELETE_BLOCKED_CODE,

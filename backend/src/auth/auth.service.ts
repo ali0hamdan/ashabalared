@@ -1,4 +1,8 @@
-import { ForbiddenException, Injectable, UnauthorizedException } from '@nestjs/common';
+import {
+  ForbiddenException,
+  Injectable,
+  UnauthorizedException,
+} from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { JwtService } from '@nestjs/jwt';
 import * as bcrypt from 'bcrypt';
@@ -23,15 +27,22 @@ export class AuthService {
   }
 
   async login(dto: LoginDto, ip?: string) {
-    const raw = dto.username.trim();
-    const usernameLower = raw.toLowerCase();
+    const identifier = dto.username.trim();
+    if (!identifier) throw new UnauthorizedException('بيانات الدخول غير صحيحة');
+
     const user = await this.prisma.user.findFirst({
       where: {
-        OR: [{ username: usernameLower }, { email: { equals: raw, mode: 'insensitive' } }],
+        OR: [
+          { username: { equals: identifier, mode: 'insensitive' } },
+          { email: { equals: identifier, mode: 'insensitive' } },
+        ],
       },
       include: { role: true },
     });
-    if (!user || !user.isActive) throw new UnauthorizedException('بيانات الدخول غير صحيحة');
+    if (!user || !user.isActive)
+      throw new UnauthorizedException('بيانات الدخول غير صحيحة');
+    if (!user.passwordHash)
+      throw new UnauthorizedException('بيانات الدخول غير صحيحة');
     const ok = await bcrypt.compare(dto.password, user.passwordHash);
     if (!ok) throw new UnauthorizedException('بيانات الدخول غير صحيحة');
 
@@ -48,7 +59,10 @@ export class AuthService {
     );
 
     const rawRefresh = randomBytes(48).toString('base64url');
-    const refreshDays = parseInt(this.config.get<string>('JWT_REFRESH_EXPIRES_DAYS') ?? '7', 10);
+    const refreshDays = parseInt(
+      this.config.get<string>('JWT_REFRESH_EXPIRES_DAYS') ?? '7',
+      10,
+    );
     const expiresAt = new Date(Date.now() + refreshDays * 86400_000);
     await this.prisma.refreshToken.create({
       data: {
@@ -91,7 +105,10 @@ export class AuthService {
     await this.prisma.refreshToken.delete({ where: { id: row.id } });
 
     const rawRefresh = randomBytes(48).toString('base64url');
-    const refreshDays = parseInt(this.config.get<string>('JWT_REFRESH_EXPIRES_DAYS') ?? '7', 10);
+    const refreshDays = parseInt(
+      this.config.get<string>('JWT_REFRESH_EXPIRES_DAYS') ?? '7',
+      10,
+    );
     const expiresAt = new Date(Date.now() + refreshDays * 86400_000);
     await this.prisma.refreshToken.create({
       data: {

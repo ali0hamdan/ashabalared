@@ -7,7 +7,9 @@ export type AuthUser = {
   roleCode: RoleCode;
 };
 
-export const CurrentUser = createParamDecorator((data: unknown, ctx: ExecutionContext): AuthUser => {
-  const req = ctx.switchToHttp().getRequest();
-  return req.user as AuthUser;
-});
+export const CurrentUser = createParamDecorator(
+  (data: unknown, ctx: ExecutionContext): AuthUser => {
+    const req = ctx.switchToHttp().getRequest();
+    return req.user as AuthUser;
+  },
+);

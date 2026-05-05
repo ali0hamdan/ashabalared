@@ -1,11 +1,26 @@
-import { Body, Controller, Delete, Get, Header, Param, Patch, Post, Query, Res, UseGuards } from '@nestjs/common';
+import {
+  Body,
+  Controller,
+  Delete,
+  Get,
+  Header,
+  Param,
+  Patch,
+  Post,
+  Query,
+  Res,
+  UseGuards,
+} from '@nestjs/common';
 import { ForceDeleteDto } from '../common/dto/force-delete.dto';
 import { Response } from 'express';
 import { RoleCode } from '@prisma/client';
 import { JwtAuthGuard } from '../common/guards/jwt-auth.guard';
 import { RolesGuard } from '../common/guards/roles.guard';
 import { Roles } from '../common/decorators/roles.decorator';
-import { CurrentUser, AuthUser } from '../common/decorators/current-user.decorator';
+import {
+  CurrentUser,
+  AuthUser,
+} from '../common/decorators/current-user.decorator';
 import { BeneficiariesService } from './beneficiaries.service';
 import { CreateBeneficiaryDto } from './dto/create-beneficiary.dto';
 import { UpdateBeneficiaryDto } from './dto/update-beneficiary.dto';
@@ -49,7 +64,11 @@ export class BeneficiariesController {
 
   @Patch(':id')
   @Roles(RoleCode.SUPER_ADMIN, RoleCode.ADMIN)
-  update(@CurrentUser() actor: AuthUser, @Param('id') id: string, @Body() dto: UpdateBeneficiaryDto) {
+  update(
+    @CurrentUser() actor: AuthUser,
+    @Param('id') id: string,
+    @Body() dto: UpdateBeneficiaryDto,
+  ) {
     return this.beneficiaries.update(actor.userId, id, dto);
   }
 
@@ -61,7 +80,16 @@ export class BeneficiariesController {
 
   @Post(':id/force-archive')
   @Roles(RoleCode.SUPER_ADMIN, RoleCode.ADMIN)
-  forceArchive(@CurrentUser() actor: AuthUser, @Param('id') id: string, @Body() dto: ForceDeleteDto) {
-    return this.beneficiaries.forceArchive(actor, id, dto.confirmationText, dto.reason);
+  forceArchive(
+    @CurrentUser() actor: AuthUser,
+    @Param('id') id: string,
+    @Body() dto: ForceDeleteDto,
+  ) {
+    return this.beneficiaries.forceArchive(
+      actor,
+      id,
+      dto.confirmationText,
+      dto.reason,
+    );
   }
 }

@@ -1,7 +1,7 @@
 import { IsString, MinLength } from 'class-validator';
 
 export class LoginDto {
-  /** Username or email (PostgreSQL case-insensitive match on email). */
+  /** Login identifier: username or email (case-insensitive for both on PostgreSQL). */
   @IsString()
   @MinLength(2)
   username!: string;

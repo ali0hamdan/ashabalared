@@ -1,9 +1,21 @@
-import { Body, Controller, Delete, Get, Param, Patch, Post, UseGuards } from '@nestjs/common';
+import {
+  Body,
+  Controller,
+  Delete,
+  Get,
+  Param,
+  Patch,
+  Post,
+  UseGuards,
+} from '@nestjs/common';
 import { RoleCode } from '@prisma/client';
 import { JwtAuthGuard } from '../common/guards/jwt-auth.guard';
 import { RolesGuard } from '../common/guards/roles.guard';
 import { Roles } from '../common/decorators/roles.decorator';
-import { CurrentUser, AuthUser } from '../common/decorators/current-user.decorator';
+import {
+  CurrentUser,
+  AuthUser,
+} from '../common/decorators/current-user.decorator';
 import { RegionsService } from './regions.service';
 
 @Controller('regions')
@@ -19,7 +31,10 @@ export class RegionsController {
 
   @Post()
   @Roles(RoleCode.SUPER_ADMIN)
-  create(@CurrentUser() actor: AuthUser, @Body() body: { nameAr: string; nameEn?: string; sortOrder?: number }) {
+  create(
+    @CurrentUser() actor: AuthUser,
+    @Body() body: { nameAr: string; nameEn?: string; sortOrder?: number },
+  ) {
     return this.regions.create(actor.userId, body);
   }
 

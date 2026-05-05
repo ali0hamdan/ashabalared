@@ -17,6 +17,10 @@ export class BeneficiariesHistoryController {
     @Query('aidCategoryId') aidCategoryId?: string,
     @Query('aidCategoryItemId') aidCategoryItemId?: string,
   ) {
-    return this.beneficiaries.deliveredHistory({ q, aidCategoryId, aidCategoryItemId });
+    return this.beneficiaries.deliveredHistory({
+      q,
+      aidCategoryId,
+      aidCategoryItemId,
+    });
   }
 }

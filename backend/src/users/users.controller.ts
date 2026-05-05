@@ -1,9 +1,22 @@
-import { Body, Controller, Delete, Get, Param, Patch, Post, Query, UseGuards } from '@nestjs/common';
+import {
+  Body,
+  Controller,
+  Delete,
+  Get,
+  Param,
+  Patch,
+  Post,
+  Query,
+  UseGuards,
+} from '@nestjs/common';
 import { RoleCode } from '@prisma/client';
 import { JwtAuthGuard } from '../common/guards/jwt-auth.guard';
 import { RolesGuard } from '../common/guards/roles.guard';
 import { Roles } from '../common/decorators/roles.decorator';
-import { CurrentUser, AuthUser } from '../common/decorators/current-user.decorator';
+import {
+  CurrentUser,
+  AuthUser,
+} from '../common/decorators/current-user.decorator';
 import { UsersService } from './users.service';
 import { CreateUserDto } from './dto/create-user.dto';
 import { UpdateUserDto } from './dto/update-user.dto';
@@ -17,7 +30,11 @@ export class UsersController {
 
   @Get()
   @Roles(RoleCode.SUPER_ADMIN, RoleCode.ADMIN)
-  list(@CurrentUser() actor: AuthUser, @Query('role') role?: RoleCode, @Query('q') q?: string) {
+  list(
+    @CurrentUser() actor: AuthUser,
+    @Query('role') role?: RoleCode,
+    @Query('q') q?: string,
+  ) {
     return this.users.list(actor, { role, q });
   }
 
@@ -29,13 +46,21 @@ export class UsersController {
 
   @Patch(':id')
   @Roles(RoleCode.SUPER_ADMIN)
-  update(@CurrentUser() actor: AuthUser, @Param('id') id: string, @Body() dto: UpdateUserDto) {
+  update(
+    @CurrentUser() actor: AuthUser,
+    @Param('id') id: string,
+    @Body() dto: UpdateUserDto,
+  ) {
     return this.users.update(actor.userId, id, dto);
   }
 
   @Post(':id/reset-password')
   @Roles(RoleCode.SUPER_ADMIN)
-  resetPassword(@CurrentUser() actor: AuthUser, @Param('id') id: string, @Body() dto: ResetPasswordDto) {
+  resetPassword(
+    @CurrentUser() actor: AuthUser,
+    @Param('id') id: string,
+    @Body() dto: ResetPasswordDto,
+  ) {
     return this.users.resetPassword(actor.userId, id, dto.password);
   }
 
@@ -47,7 +72,17 @@ export class UsersController {
 
   @Post(':id/force-delete')
   @Roles(RoleCode.SUPER_ADMIN, RoleCode.ADMIN)
-  forceDelete(@CurrentUser() actor: AuthUser, @Param('id') id: string, @Body() dto: ForceDeleteUserDto) {
-    return this.users.forceRemove(actor, id, dto.confirmationText, dto.selfUsernameConfirm, dto.reason);
+  forceDelete(
+    @CurrentUser() actor: AuthUser,
+    @Param('id') id: string,
+    @Body() dto: ForceDeleteUserDto,
+  ) {
+    return this.users.forceRemove(
+      actor,
+      id,
+      dto.confirmationText,
+      dto.selfUsernameConfirm,
+      dto.reason,
+    );
   }
 }

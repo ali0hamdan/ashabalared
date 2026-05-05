@@ -1,4 +1,11 @@
-import { IsEnum, IsInt, IsOptional, IsString, Min, MinLength } from 'class-validator';
+import {
+  IsEnum,
+  IsInt,
+  IsOptional,
+  IsString,
+  Min,
+  MinLength,
+} from 'class-validator';
 import { StockUnit } from '@prisma/client';
 
 export class CreateCategoryItemDto {

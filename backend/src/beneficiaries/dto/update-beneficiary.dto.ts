@@ -1,5 +1,16 @@
 import { Transform, Type } from 'class-transformer';
-import { IsArray, IsBoolean, IsEnum, IsInt, IsOptional, IsString, MaxLength, Min, MinLength, ValidateNested } from 'class-validator';
+import {
+  IsArray,
+  IsBoolean,
+  IsEnum,
+  IsInt,
+  IsOptional,
+  IsString,
+  MaxLength,
+  Min,
+  MinLength,
+  ValidateNested,
+} from 'class-validator';
 import { BeneficiaryStatus } from '@prisma/client';
 import { BeneficiaryCategoryNeedDto } from './beneficiary-category-need.dto';
 import { BeneficiaryItemNeedDto } from './beneficiary-item-need.dto';
@@ -27,7 +38,11 @@ export class UpdateBeneficiaryDto {
   @MinLength(1)
   area?: string;
 
-  @Transform(({ obj }) => (obj as { familyCount?: unknown; householdSize?: unknown }).familyCount ?? (obj as { householdSize?: unknown }).householdSize)
+  @Transform(
+    ({ obj }) =>
+      (obj as { familyCount?: unknown; householdSize?: unknown }).familyCount ??
+      (obj as { householdSize?: unknown }).householdSize,
+  )
   @IsOptional()
   @Type(() => Number)
   @IsInt()

@@ -49,7 +49,11 @@ export class CreateBeneficiaryDto {
   @MaxLength(2000)
   street?: string;
 
-  @Transform(({ obj }) => (obj as { familyCount?: unknown; householdSize?: unknown }).familyCount ?? (obj as { householdSize?: unknown }).householdSize)
+  @Transform(
+    ({ obj }) =>
+      (obj as { familyCount?: unknown; householdSize?: unknown }).familyCount ??
+      (obj as { householdSize?: unknown }).householdSize,
+  )
   @Type(() => Number)
   @IsInt()
   @Min(1)

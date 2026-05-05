@@ -27,7 +27,8 @@ export class JwtStrategy extends PassportStrategy(Strategy, 'jwt') {
       include: { role: true },
     });
     if (!user || !user.isActive) throw new UnauthorizedException();
-    if (!user.role?.code) throw new UnauthorizedException('Account has no assigned role');
+    if (!user.role?.code)
+      throw new UnauthorizedException('Account has no assigned role');
     return {
       userId: user.id,
       username: user.username,

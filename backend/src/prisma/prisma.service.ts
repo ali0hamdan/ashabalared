@@ -1,8 +1,16 @@
-import { Injectable, Logger, OnModuleDestroy, OnModuleInit } from '@nestjs/common';
+import {
+  Injectable,
+  Logger,
+  OnModuleDestroy,
+  OnModuleInit,
+} from '@nestjs/common';
 import { Prisma, PrismaClient } from '@prisma/client';
 
 @Injectable()
-export class PrismaService extends PrismaClient implements OnModuleInit, OnModuleDestroy {
+export class PrismaService
+  extends PrismaClient
+  implements OnModuleInit, OnModuleDestroy
+{
   private readonly logger = new Logger(PrismaService.name);
 
   async onModuleInit() {
@@ -16,8 +24,13 @@ export class PrismaService extends PrismaClient implements OnModuleInit, OnModul
    * Set SKIP_DB_SCHEMA_CHECK=1 to bypass (e.g. exotic test DBs).
    */
   private async assertDatabaseSchemaMatchesPrisma() {
-    if (process.env.SKIP_DB_SCHEMA_CHECK === '1' || process.env.SKIP_DB_SCHEMA_CHECK === 'true') {
-      this.logger.warn('SKIP_DB_SCHEMA_CHECK is set; skipping schema compatibility probe');
+    if (
+      process.env.SKIP_DB_SCHEMA_CHECK === '1' ||
+      process.env.SKIP_DB_SCHEMA_CHECK === 'true'
+    ) {
+      this.logger.warn(
+        'SKIP_DB_SCHEMA_CHECK is set; skipping schema compatibility probe',
+      );
       return;
     }
     const rows = await this.$queryRaw<{ ok: number }[]>(Prisma.sql`

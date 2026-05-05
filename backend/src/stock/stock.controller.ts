@@ -1,9 +1,22 @@
-import { Body, Controller, Delete, Get, Param, Patch, Post, Query, UseGuards } from '@nestjs/common';
+import {
+  Body,
+  Controller,
+  Delete,
+  Get,
+  Param,
+  Patch,
+  Post,
+  Query,
+  UseGuards,
+} from '@nestjs/common';
 import { RoleCode } from '@prisma/client';
 import { JwtAuthGuard } from '../common/guards/jwt-auth.guard';
 import { RolesGuard } from '../common/guards/roles.guard';
 import { Roles } from '../common/decorators/roles.decorator';
-import { CurrentUser, AuthUser } from '../common/decorators/current-user.decorator';
+import {
+  CurrentUser,
+  AuthUser,
+} from '../common/decorators/current-user.decorator';
 import { StockService } from './stock.service';
 import { CreateStockItemDto } from './dto/create-stock-item.dto';
 import { UpdateStockItemDto } from './dto/update-stock-item.dto';
@@ -38,13 +51,21 @@ export class StockController {
 
   @Patch(':id')
   @Roles(RoleCode.SUPER_ADMIN, RoleCode.ADMIN)
-  update(@CurrentUser() actor: AuthUser, @Param('id') id: string, @Body() body: UpdateStockItemDto) {
+  update(
+    @CurrentUser() actor: AuthUser,
+    @Param('id') id: string,
+    @Body() body: UpdateStockItemDto,
+  ) {
     return this.stock.update(actor.userId, id, body);
   }
 
   @Patch(':id/adjust')
   @Roles(RoleCode.SUPER_ADMIN, RoleCode.ADMIN)
-  adjust(@CurrentUser() actor: AuthUser, @Param('id') id: string, @Body() body: { delta: number; note?: string }) {
+  adjust(
+    @CurrentUser() actor: AuthUser,
+    @Param('id') id: string,
+    @Body() body: { delta: number; note?: string },
+  ) {
     return this.stock.adjust(actor.userId, id, body);
   }
 
@@ -56,7 +77,11 @@ export class StockController {
 
   @Post(':id/force-delete')
   @Roles(RoleCode.SUPER_ADMIN, RoleCode.ADMIN)
-  forceDelete(@CurrentUser() actor: AuthUser, @Param('id') id: string, @Body() dto: ForceDeleteDto) {
+  forceDelete(
+    @CurrentUser() actor: AuthUser,
+    @Param('id') id: string,
+    @Body() dto: ForceDeleteDto,
+  ) {
     return this.stock.forceDelete(actor, id, dto.confirmationText, dto.reason);
   }
 

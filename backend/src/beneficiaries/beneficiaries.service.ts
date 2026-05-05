@@ -1,5 +1,14 @@
-import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
-import { BeneficiaryStatus, DistributionStatus, Prisma, RoleCode } from '@prisma/client';
+import {
+  BadRequestException,
+  Injectable,
+  NotFoundException,
+} from '@nestjs/common';
+import {
+  BeneficiaryStatus,
+  DistributionStatus,
+  Prisma,
+  RoleCode,
+} from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { AuditService } from '../audit/audit.service';
 import { deleteBlocked } from '../common/http/delete-blocked';
@@ -55,7 +64,9 @@ export class BeneficiariesService {
   private beneficiaryListInclude(): Prisma.BeneficiaryInclude {
     return {
       region: true,
-      categories: { include: { category: { select: { id: true, name: true } } } },
+      categories: {
+        include: { category: { select: { id: true, name: true } } },
+      },
       itemNeeds: {
         where: { needed: true, quantity: { gte: 1 } },
         orderBy: { aidCategoryItem: { name: 'asc' } },
@@ -77,7 +88,9 @@ export class BeneficiariesService {
       for (const n of categoryNeeds) {
         if (!n?.categoryId || n.needed === false) continue;
         const qty =
-          typeof n.quantity === 'number' && Number.isFinite(n.quantity) ? Math.max(0, Math.floor(n.quantity)) : 0;
+          typeof n.quantity === 'number' && Number.isFinite(n.quantity)
+            ? Math.max(0, Math.floor(n.quantity))
+            : 0;
         const trimmed = typeof n.notes === 'string' ? n.notes.trim() : '';
         map.set(n.categoryId, {
           quantity: qty,
@@ -91,7 +104,11 @@ export class BeneficiariesService {
       }));
     }
     if (categoryIds?.length) {
-      return [...new Set(categoryIds)].map((categoryId) => ({ categoryId, quantity: 0, notes: null }));
+      return [...new Set(categoryIds)].map((categoryId) => ({
+        categoryId,
+        quantity: 0,
+        notes: null,
+      }));
     }
     return [];
   }
@@ -104,12 +121,17 @@ export class BeneficiariesService {
     notes: string | null;
   }[] {
     if (!itemNeeds?.length) return [];
-    const map = new Map<string, { needed: boolean; quantity: number; notes: string | null }>();
+    const map = new Map<
+      string,
+      { needed: boolean; quantity: number; notes: string | null }
+    >();
     for (const n of itemNeeds) {
       if (!n?.aidCategoryItemId?.trim()) continue;
       const id = n.aidCategoryItemId.trim();
       const quantity =
-        typeof n.quantity === 'number' && Number.isFinite(n.quantity) ? Math.max(0, Math.floor(n.quantity)) : 0;
+        typeof n.quantity === 'number' && Number.isFinite(n.quantity)
+          ? Math.max(0, Math.floor(n.quantity))
+          : 0;
       const trimmed = typeof n.notes === 'string' ? n.notes.trim() : '';
       map.set(id, {
         needed: Boolean(n.needed),
@@ -125,7 +147,9 @@ export class BeneficiariesService {
     }));
   }
 
-  private groupItemNeedsByCategory(rows: ItemNeedRow[]): ItemNeedsByCategoryGroup[] {
+  private groupItemNeedsByCategory(
+    rows: ItemNeedRow[],
+  ): ItemNeedsByCategoryGroup[] {
     const map = new Map<string, ItemNeedsByCategoryGroup>();
     for (const row of rows) {
       const item = row.aidCategoryItem;
@@ -147,16 +171,23 @@ export class BeneficiariesService {
     for (const b of map.values()) {
       b.needs.sort(
         (a, c) =>
-          (a.aidCategoryItem.sortOrder ?? 0) - (c.aidCategoryItem.sortOrder ?? 0) ||
+          (a.aidCategoryItem.sortOrder ?? 0) -
+            (c.aidCategoryItem.sortOrder ?? 0) ||
           a.aidCategoryItem.name.localeCompare(c.aidCategoryItem.name),
       );
     }
-    return [...map.values()].sort((a, b) => a.category.name.localeCompare(b.category.name));
+    return [...map.values()].sort((a, b) =>
+      a.category.name.localeCompare(b.category.name),
+    );
   }
 
   /** Merged `include` shapes (e.g. `get`) widen `itemNeeds`; grouping normalizes at runtime. */
-  private withItemNeedsGrouped(b: Record<string, unknown> & { itemNeeds?: unknown }) {
-    const rows = (Array.isArray(b.itemNeeds) ? b.itemNeeds : []) as ItemNeedRow[];
+  private withItemNeedsGrouped(
+    b: Record<string, unknown> & { itemNeeds?: unknown },
+  ) {
+    const rows = (
+      Array.isArray(b.itemNeeds) ? b.itemNeeds : []
+    ) as ItemNeedRow[];
     return {
       ...b,
       itemNeedsByCategory: this.groupItemNeedsByCategory(rows),
@@ -164,7 +195,10 @@ export class BeneficiariesService {
   }
 
   /** `street` API field maps to Prisma `addressLine`. */
-  private resolveAddressLineFromInput(street?: string | null, addressLine?: string | null): string | null {
+  private resolveAddressLineFromInput(
+    street?: string | null,
+    addressLine?: string | null,
+  ): string | null {
     if (street !== undefined && street !== null) {
       const t = typeof street === 'string' ? street.trim() : '';
       return t.length ? t : null;
@@ -176,25 +210,36 @@ export class BeneficiariesService {
     return null;
   }
 
-  private withStreetSerialized<T extends Record<string, unknown>>(b: T): T & { street: string | null } {
+  private withStreetSerialized<T extends Record<string, unknown>>(
+    b: T,
+  ): T & { street: string | null } {
     const line = (b as { addressLine?: string | null }).addressLine;
     return { ...b, street: line ?? null };
   }
 
   private async ensureCategoryIdsExist(ids: string[]) {
     if (!ids.length) return;
-    const found = await this.prisma.aidCategory.count({ where: { id: { in: ids } } });
-    if (found !== ids.length) throw new BadRequestException('فئة مساعدة غير صالحة');
+    const found = await this.prisma.aidCategory.count({
+      where: { id: { in: ids } },
+    });
+    if (found !== ids.length)
+      throw new BadRequestException('فئة مساعدة غير صالحة');
   }
 
   private async ensureAidCategoryItemIdsExist(ids: string[]) {
     if (!ids.length) return;
-    const found = await this.prisma.aidCategoryItem.count({ where: { id: { in: ids } } });
-    if (found !== ids.length) throw new BadRequestException('بند فئة مساعدة غير صالح');
+    const found = await this.prisma.aidCategoryItem.count({
+      where: { id: { in: ids } },
+    });
+    if (found !== ids.length)
+      throw new BadRequestException('بند فئة مساعدة غير صالح');
   }
 
-  private normalizeBeneficiaryStatus(raw?: string): BeneficiaryStatus | undefined {
-    if (raw === undefined || raw === null || String(raw).trim() === '') return undefined;
+  private normalizeBeneficiaryStatus(
+    raw?: string,
+  ): BeneficiaryStatus | undefined {
+    if (raw === undefined || raw === null || String(raw).trim() === '')
+      return undefined;
     const v = String(raw).trim() as BeneficiaryStatus;
     if (!Object.values(BeneficiaryStatus).includes(v)) {
       throw new BadRequestException(`Invalid beneficiary status: ${raw}`);
@@ -202,9 +247,15 @@ export class BeneficiariesService {
     return v;
   }
 
-  async list(query: { q?: string; status?: BeneficiaryStatus | string; regionId?: string }) {
+  async list(query: {
+    q?: string;
+    status?: BeneficiaryStatus | string;
+    regionId?: string;
+  }) {
     const where: Prisma.BeneficiaryWhereInput = { deletedAt: null };
-    const status = this.normalizeBeneficiaryStatus(query.status as string | undefined);
+    const status = this.normalizeBeneficiaryStatus(
+      query.status as string | undefined,
+    );
     if (status) where.status = status;
     const regionId = query.regionId?.trim() || undefined;
     if (regionId) where.regionId = regionId;
@@ -282,7 +333,9 @@ export class BeneficiariesService {
                 },
               },
             },
-            createdBy: { select: { id: true, displayName: true, username: true } },
+            createdBy: {
+              select: { id: true, displayName: true, username: true },
+            },
             completedBy: { select: { id: true, displayName: true } },
           },
         },
@@ -294,11 +347,21 @@ export class BeneficiariesService {
   }
 
   async create(actorId: string, dto: CreateBeneficiaryDto) {
-    const { categoryNeeds, categoryIds, itemNeeds, needs, street, addressLine, ...rest } = dto;
+    const {
+      categoryNeeds,
+      categoryIds,
+      itemNeeds,
+      needs,
+      street,
+      addressLine,
+      ...rest
+    } = dto;
     const catNeeds = this.normalizeCategoryNeeds(categoryNeeds, categoryIds);
     const itemNeedRows = this.normalizeItemNeeds(itemNeeds ?? needs);
     await this.ensureCategoryIdsExist(catNeeds.map((n) => n.categoryId));
-    await this.ensureAidCategoryItemIdsExist(itemNeedRows.map((n) => n.aidCategoryItemId));
+    await this.ensureAidCategoryItemIdsExist(
+      itemNeedRows.map((n) => n.aidCategoryItemId),
+    );
 
     const beneficiary = await this.prisma.$transaction(async (tx) => {
       const b = await tx.beneficiary.create({
@@ -367,14 +430,33 @@ export class BeneficiariesService {
 
   async update(actorId: string, id: string, dto: UpdateBeneficiaryDto) {
     const existing = await this.ensure(id);
-    const { categoryNeeds, categoryIds, itemNeeds, needs, regionId, street, addressLine, ...scalar } = dto;
-    const replaceCategories = dto.categoryNeeds !== undefined || dto.categoryIds !== undefined;
-    const replaceItemNeeds = dto.itemNeeds !== undefined || dto.needs !== undefined;
-    const catNeeds = replaceCategories ? this.normalizeCategoryNeeds(categoryNeeds, categoryIds) : null;
+    const {
+      categoryNeeds,
+      categoryIds,
+      itemNeeds,
+      needs,
+      regionId,
+      street,
+      addressLine,
+      ...scalar
+    } = dto;
+    const replaceCategories =
+      dto.categoryNeeds !== undefined || dto.categoryIds !== undefined;
+    const replaceItemNeeds =
+      dto.itemNeeds !== undefined || dto.needs !== undefined;
+    const catNeeds = replaceCategories
+      ? this.normalizeCategoryNeeds(categoryNeeds, categoryIds)
+      : null;
     const itemNeedPayload = dto.itemNeeds !== undefined ? itemNeeds : needs;
-    const itemNeedRows = replaceItemNeeds ? this.normalizeItemNeeds(itemNeedPayload) : null;
-    if (replaceCategories) await this.ensureCategoryIdsExist(catNeeds!.map((n) => n.categoryId));
-    if (replaceItemNeeds) await this.ensureAidCategoryItemIdsExist(itemNeedRows!.map((n) => n.aidCategoryItemId));
+    const itemNeedRows = replaceItemNeeds
+      ? this.normalizeItemNeeds(itemNeedPayload)
+      : null;
+    if (replaceCategories)
+      await this.ensureCategoryIdsExist(catNeeds!.map((n) => n.categoryId));
+    if (replaceItemNeeds)
+      await this.ensureAidCategoryItemIdsExist(
+        itemNeedRows!.map((n) => n.aidCategoryItemId),
+      );
 
     const data: Prisma.BeneficiaryUpdateInput = {};
     if (scalar.fullName !== undefined) data.fullName = scalar.fullName;
@@ -397,10 +479,13 @@ export class BeneficiariesService {
       );
     }
     if (scalar.familyCount !== undefined) data.familyCount = scalar.familyCount;
-    if (scalar.cookingStove !== undefined) data.cookingStove = scalar.cookingStove;
+    if (scalar.cookingStove !== undefined)
+      data.cookingStove = scalar.cookingStove;
     if (scalar.notes !== undefined) data.notes = scalar.notes;
-    if (scalar.medicalNotes !== undefined) data.medicalNotes = scalar.medicalNotes;
-    if (scalar.deliveryNotes !== undefined) data.deliveryNotes = scalar.deliveryNotes;
+    if (scalar.medicalNotes !== undefined)
+      data.medicalNotes = scalar.medicalNotes;
+    if (scalar.deliveryNotes !== undefined)
+      data.deliveryNotes = scalar.deliveryNotes;
     if (scalar.status !== undefined) data.status = scalar.status;
     if (regionId !== undefined) {
       if (regionId === null) data.region = { disconnect: true };
@@ -472,7 +557,9 @@ export class BeneficiariesService {
     const open = await this.prisma.distributionRecord.count({
       where: {
         beneficiaryId: id,
-        status: { in: [DistributionStatus.PENDING, DistributionStatus.ASSIGNED] },
+        status: {
+          in: [DistributionStatus.PENDING, DistributionStatus.ASSIGNED],
+        },
       },
     });
     if (open > 0) {
@@ -499,18 +586,30 @@ export class BeneficiariesService {
    * Cancels all pending/assigned distributions for this beneficiary, then archives the file.
    * Admin / Super-admin (controller).
    */
-  async forceArchive(actor: AuthUser, id: string, confirmationText: string, reason?: string) {
-    if (actor.roleCode !== RoleCode.SUPER_ADMIN && actor.roleCode !== RoleCode.ADMIN) {
+  async forceArchive(
+    actor: AuthUser,
+    id: string,
+    confirmationText: string,
+    reason?: string,
+  ) {
+    if (
+      actor.roleCode !== RoleCode.SUPER_ADMIN &&
+      actor.roleCode !== RoleCode.ADMIN
+    ) {
       throw new BadRequestException();
     }
     if (String(confirmationText ?? '').trim() !== 'DELETE') {
-      throw new BadRequestException('Confirmation must be the word DELETE (exact match).');
+      throw new BadRequestException(
+        'Confirmation must be the word DELETE (exact match).',
+      );
     }
     await this.ensure(id);
     const cancelled = await this.prisma.distributionRecord.updateMany({
       where: {
         beneficiaryId: id,
-        status: { in: [DistributionStatus.PENDING, DistributionStatus.ASSIGNED] },
+        status: {
+          in: [DistributionStatus.PENDING, DistributionStatus.ASSIGNED],
+        },
       },
       data: {
         status: DistributionStatus.CANCELLED,
@@ -539,7 +638,9 @@ export class BeneficiariesService {
   }
 
   private async ensure(id: string) {
-    const b = await this.prisma.beneficiary.findFirst({ where: { id, deletedAt: null } });
+    const b = await this.prisma.beneficiary.findFirst({
+      where: { id, deletedAt: null },
+    });
     if (!b) throw new NotFoundException();
     return b;
   }
@@ -561,7 +662,9 @@ export class BeneficiariesService {
       });
       if (!item) throw new BadRequestException('بند فئة مساعدة غير صالح');
       if (rawC && item.aidCategoryId !== rawC) {
-        throw new BadRequestException('البند لا ينتمي إلى فئة المساعدة المحددة');
+        throw new BadRequestException(
+          'البند لا ينتمي إلى فئة المساعدة المحددة',
+        );
       }
       return { itemId: rawI };
     }
@@ -582,7 +685,10 @@ export class BeneficiariesService {
   ): boolean {
     if (itemId) return it.aidCategoryItemId === itemId;
     if (categoryId) {
-      return it.aidCategoryId === categoryId || it.aidCategoryItem?.aidCategoryId === categoryId;
+      return (
+        it.aidCategoryId === categoryId ||
+        it.aidCategoryItem?.aidCategoryId === categoryId
+      );
     }
     return true;
   }
@@ -592,17 +698,28 @@ export class BeneficiariesService {
    * Optional `q` filters name/phone/area/district (server-side).
    * Optional `aidCategoryId` / `aidCategoryItemId` restrict to beneficiaries (and lines) with matching delivered stock lines.
    */
-  async deliveredHistory(query?: { q?: string; aidCategoryId?: string; aidCategoryItemId?: string }) {
-    const { categoryId, itemId } = await this.resolveDeliveredHistoryAidFilters(query?.aidCategoryId, query?.aidCategoryItemId);
+  async deliveredHistory(query?: {
+    q?: string;
+    aidCategoryId?: string;
+    aidCategoryItemId?: string;
+  }) {
+    const { categoryId, itemId } = await this.resolveDeliveredHistoryAidFilters(
+      query?.aidCategoryId,
+      query?.aidCategoryItemId,
+    );
     const qTrim = query?.q?.trim();
 
-    const lineWhere: Prisma.DistributionRecordItemWhereInput | undefined = itemId
-      ? { aidCategoryItemId: itemId }
-      : categoryId
-        ? {
-            OR: [{ aidCategoryId: categoryId }, { aidCategoryItem: { aidCategoryId: categoryId } }],
-          }
-        : undefined;
+    const lineWhere: Prisma.DistributionRecordItemWhereInput | undefined =
+      itemId
+        ? { aidCategoryItemId: itemId }
+        : categoryId
+          ? {
+              OR: [
+                { aidCategoryId: categoryId },
+                { aidCategoryItem: { aidCategoryId: categoryId } },
+              ],
+            }
+          : undefined;
 
     const where: Prisma.BeneficiaryWhereInput = {
       deletedAt: null,
@@ -660,7 +777,9 @@ export class BeneficiariesService {
       const deliveries = b.distributions
         .map((d) => {
           const items = filterLines
-            ? d.items.filter((it) => this.deliveryLineMatchesAid(it, categoryId, itemId))
+            ? d.items.filter((it) =>
+                this.deliveryLineMatchesAid(it, categoryId, itemId),
+              )
             : d.items;
           if (items.length === 0) return null;
           return {
@@ -706,7 +825,10 @@ export class BeneficiariesService {
     );
   }
 
-  private lineDeliveredQuantity(it: { quantityDelivered: number; quantityPlanned: number }): number {
+  private lineDeliveredQuantity(it: {
+    quantityDelivered: number;
+    quantityPlanned: number;
+  }): number {
     const d = it.quantityDelivered ?? 0;
     if (d > 0) return d;
     return it.quantityPlanned ?? 0;
@@ -718,7 +840,17 @@ export class BeneficiariesService {
       include: { region: true },
       orderBy: { updatedAt: 'desc' },
     });
-    const header = ['الاسم', 'الهاتف', 'المنطقة', 'القضاء', 'الحي', 'الشارع', 'عدد الأفراد', 'الحالة', 'ملاحظات'];
+    const header = [
+      'الاسم',
+      'الهاتف',
+      'المنطقة',
+      'القضاء',
+      'الحي',
+      'الشارع',
+      'عدد الأفراد',
+      'الحالة',
+      'ملاحظات',
+    ];
     const lines = rows.map((r) =>
       [
         r.fullName,

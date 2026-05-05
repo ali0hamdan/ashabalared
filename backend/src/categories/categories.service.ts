@@ -1,4 +1,9 @@
-import { BadRequestException, ConflictException, Injectable, NotFoundException } from '@nestjs/common';
+import {
+  BadRequestException,
+  ConflictException,
+  Injectable,
+  NotFoundException,
+} from '@nestjs/common';
 import { Prisma, RoleCode, StockUnit } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { AuditService } from '../audit/audit.service';
@@ -58,14 +63,17 @@ export class CategoriesService {
     await this.ensure(id);
     if (dto.name !== undefined) {
       const n = dto.name.trim();
-      const clash = await this.prisma.aidCategory.findFirst({ where: { name: n, NOT: { id } } });
+      const clash = await this.prisma.aidCategory.findFirst({
+        where: { name: n, NOT: { id } },
+      });
       if (clash) throw new ConflictException('اسم الفئة مستخدم مسبقاً');
     }
     const cat = await this.prisma.aidCategory.update({
       where: { id },
       data: {
         name: dto.name?.trim(),
-        description: dto.description === undefined ? undefined : dto.description,
+        description:
+          dto.description === undefined ? undefined : dto.description,
         isActive: dto.isActive,
       },
       include: { items: true },
@@ -83,7 +91,10 @@ export class CategoriesService {
   /**
    * Hard-delete a category and all dependent rows (Admin / Super-admin). Order respects FKs.
    */
-  private async cascadeDeleteCategory(tx: Prisma.TransactionClient, categoryId: string): Promise<void> {
+  private async cascadeDeleteCategory(
+    tx: Prisma.TransactionClient,
+    categoryId: string,
+  ): Promise<void> {
     const items = await tx.aidCategoryItem.findMany({
       where: { aidCategoryId: categoryId },
       select: { id: true },
@@ -96,16 +107,22 @@ export class CategoriesService {
     });
     const stockIds = stocks.map((s) => s.id);
 
-    const distOr: Prisma.DistributionRecordItemWhereInput[] = [{ aidCategoryId: categoryId }];
+    const distOr: Prisma.DistributionRecordItemWhereInput[] = [
+      { aidCategoryId: categoryId },
+    ];
     if (itemIds.length) distOr.push({ aidCategoryItemId: { in: itemIds } });
     if (stockIds.length) distOr.push({ stockItemId: { in: stockIds } });
 
     await tx.distributionRecordItem.deleteMany({ where: { OR: distOr } });
     await tx.beneficiaryCategory.deleteMany({ where: { categoryId } });
     if (stockIds.length) {
-      await tx.stockMovement.deleteMany({ where: { stockItemId: { in: stockIds } } });
+      await tx.stockMovement.deleteMany({
+        where: { stockItemId: { in: stockIds } },
+      });
     }
-    await tx.stockItem.deleteMany({ where: { aidCategoryItem: { aidCategoryId: categoryId } } });
+    await tx.stockItem.deleteMany({
+      where: { aidCategoryItem: { aidCategoryId: categoryId } },
+    });
     await tx.aidCategory.delete({ where: { id: categoryId } });
   }
 
@@ -127,12 +144,22 @@ export class CategoriesService {
   /**
    * Same cascade as {@link remove}, with typed confirmation (Admin / Super-admin).
    */
-  async forceDelete(actor: AuthUser, id: string, confirmationText: string, reason?: string) {
-    if (actor.roleCode !== RoleCode.SUPER_ADMIN && actor.roleCode !== RoleCode.ADMIN) {
+  async forceDelete(
+    actor: AuthUser,
+    id: string,
+    confirmationText: string,
+    reason?: string,
+  ) {
+    if (
+      actor.roleCode !== RoleCode.SUPER_ADMIN &&
+      actor.roleCode !== RoleCode.ADMIN
+    ) {
       throw new BadRequestException();
     }
     if (String(confirmationText ?? '').trim() !== 'DELETE') {
-      throw new BadRequestException('Confirmation must be the word DELETE (exact match).');
+      throw new BadRequestException(
+        'Confirmation must be the word DELETE (exact match).',
+      );
     }
     await this.ensure(id);
     await this.prisma.$transaction(async (tx) => {
@@ -153,7 +180,11 @@ export class CategoriesService {
     return { ok: true, outcome: 'hard_deleted' as const };
   }
 
-  async addItem(actorId: string, categoryId: string, dto: CreateCategoryItemDto) {
+  async addItem(
+    actorId: string,
+    categoryId: string,
+    dto: CreateCategoryItemDto,
+  ) {
     await this.ensure(categoryId);
     const max = await this.prisma.aidCategoryItem.aggregate({
       where: { aidCategoryId: categoryId },
@@ -177,7 +208,11 @@ export class CategoriesService {
     return item;
   }
 
-  async updateItem(actorId: string, itemId: string, dto: UpdateCategoryItemDto) {
+  async updateItem(
+    actorId: string,
+    itemId: string,
+    dto: UpdateCategoryItemDto,
+  ) {
     const item = await this.prisma.aidCategoryItem.update({
       where: { id: itemId },
       data: {
@@ -198,15 +233,23 @@ export class CategoriesService {
   }
 
   async removeItem(actorId: string, itemId: string) {
-    const stock = await this.prisma.stockItem.findUnique({ where: { aidCategoryItemId: itemId } });
-    if (stock) throw new BadRequestException('لا يمكن حذف البند طالما يوجد سجل مخزون له');
+    const stock = await this.prisma.stockItem.findUnique({
+      where: { aidCategoryItemId: itemId },
+    });
+    if (stock)
+      throw new BadRequestException(
+        'لا يمكن حذف البند طالما يوجد سجل مخزون له',
+      );
     const pendingLine = await this.prisma.distributionRecordItem.findFirst({
       where: {
         aidCategoryItemId: itemId,
         distributionRecord: { status: 'PENDING' },
       },
     });
-    if (pendingLine) throw new BadRequestException('لا يمكن حذف البند وهو مستخدم في توزيع قيد الانتظار');
+    if (pendingLine)
+      throw new BadRequestException(
+        'لا يمكن حذف البند وهو مستخدم في توزيع قيد الانتظار',
+      );
     await this.prisma.aidCategoryItem.delete({ where: { id: itemId } });
     await this.audit.log({
       action: 'CATEGORY_ITEM_DELETED',
@@ -253,7 +296,12 @@ export class CategoriesService {
     });
     const itemIds = items.map((i) => i.id);
 
-    type Line = { itemName: string; quantity: number; notes: string | null; legacy?: boolean };
+    type Line = {
+      itemName: string;
+      quantity: number;
+      notes: string | null;
+      legacy?: boolean;
+    };
     type Acc = {
       id: string;
       fullName: string;
@@ -265,7 +313,11 @@ export class CategoriesService {
     };
     const byBen = new Map<string, Acc>();
 
-    const qualifiesItemNeed = (row: { needed: boolean; quantity: number; notes: string | null }) => {
+    const qualifiesItemNeed = (row: {
+      needed: boolean;
+      quantity: number;
+      notes: string | null;
+    }) => {
       if (!row.needed) return false;
       const n = (row.notes ?? '').trim();
       return (row.quantity ?? 0) >= 1 || n.length > 0;
@@ -279,7 +331,14 @@ export class CategoriesService {
         },
         include: {
           beneficiary: {
-            select: { id: true, fullName: true, phone: true, area: true, addressLine: true, familyCount: true },
+            select: {
+              id: true,
+              fullName: true,
+              phone: true,
+              area: true,
+              addressLine: true,
+              familyCount: true,
+            },
           },
           aidCategoryItem: { select: { name: true } },
         },
@@ -315,7 +374,14 @@ export class CategoriesService {
       },
       include: {
         beneficiary: {
-          select: { id: true, fullName: true, phone: true, area: true, addressLine: true, familyCount: true },
+          select: {
+            id: true,
+            fullName: true,
+            phone: true,
+            area: true,
+            addressLine: true,
+            familyCount: true,
+          },
         },
       },
     });
@@ -354,6 +420,11 @@ export class CategoriesService {
       }))
       .sort((a, b) => a.fullName.localeCompare(b.fullName));
 
-    return { categoryId: category.id, categoryName: category.name, count: beneficiaries.length, beneficiaries };
+    return {
+      categoryId: category.id,
+      categoryName: category.name,
+      count: beneficiaries.length,
+      beneficiaries,
+    };
   }
 }

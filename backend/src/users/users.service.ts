@@ -1,4 +1,9 @@
-import { BadRequestException, ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
+import {
+  BadRequestException,
+  ForbiddenException,
+  Injectable,
+  NotFoundException,
+} from '@nestjs/common';
 import * as bcrypt from 'bcrypt';
 import { Prisma, PrismaClient, RoleCode } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
@@ -29,11 +34,21 @@ export class UsersService {
       },
     });
     if (dist > 0) {
-      throw deleteBlocked('This user is referenced by distribution records.', ['distributions'], { distributionRefs: dist });
+      throw deleteBlocked(
+        'This user is referenced by distribution records.',
+        ['distributions'],
+        { distributionRefs: dist },
+      );
     }
-    const assigns = await this.prisma.deliveryAssignment.count({ where: { deliveryUserId: id } });
+    const assigns = await this.prisma.deliveryAssignment.count({
+      where: { deliveryUserId: id },
+    });
     if (assigns > 0) {
-      throw deleteBlocked('This user is referenced by delivery assignments.', ['deliveryAssignments'], { assignmentRefs: assigns });
+      throw deleteBlocked(
+        'This user is referenced by delivery assignments.',
+        ['deliveryAssignments'],
+        { assignmentRefs: assigns },
+      );
     }
   }
 
@@ -71,9 +86,18 @@ export class UsersService {
       data: { assignedById: null },
     });
 
-    await db.auditLog.updateMany({ where: { actorUserId: id }, data: { actorUserId: null } });
-    await db.stockMovement.updateMany({ where: { createdById: id }, data: { createdById: null } });
-    await db.user.updateMany({ where: { createdById: id }, data: { createdById: null } });
+    await db.auditLog.updateMany({
+      where: { actorUserId: id },
+      data: { actorUserId: null },
+    });
+    await db.stockMovement.updateMany({
+      where: { createdById: id },
+      data: { createdById: null },
+    });
+    await db.user.updateMany({
+      where: { createdById: id },
+      data: { createdById: null },
+    });
   }
 
   private isForeignKeyViolation(e: unknown): boolean {
@@ -85,19 +109,27 @@ export class UsersService {
   }
 
   /** When force-deleting self, reassign refs to another active user (cannot point at the row being removed). */
-  private async resolveReassignTargetForForceDelete(actorId: string, userIdToDelete: string): Promise<string> {
+  private async resolveReassignTargetForForceDelete(
+    actorId: string,
+    userIdToDelete: string,
+  ): Promise<string> {
     if (actorId !== userIdToDelete) return actorId;
     const other = await this.prisma.user.findFirst({
       where: { id: { not: userIdToDelete }, isActive: true },
       orderBy: { createdAt: 'asc' },
     });
     if (!other) {
-      throw new BadRequestException('Cannot delete the only remaining user; there is no account to reassign records to.');
+      throw new BadRequestException(
+        'Cannot delete the only remaining user; there is no account to reassign records to.',
+      );
     }
     return other.id;
   }
 
-  async list(actor: { userId: string; roleCode: RoleCode }, query: { role?: RoleCode; q?: string }) {
+  async list(
+    actor: { userId: string; roleCode: RoleCode },
+    query: { role?: RoleCode; q?: string },
+  ) {
     const where: Prisma.UserWhereInput = {};
     if (actor.roleCode === RoleCode.ADMIN) {
       where.role = { code: RoleCode.DELIVERY };
@@ -119,7 +151,8 @@ export class UsersService {
   }
 
   async create(actorId: string, dto: CreateUserDto) {
-    if (dto.roleCode === RoleCode.SUPER_ADMIN) throw new BadRequestException('غير مسموح');
+    if (dto.roleCode === RoleCode.SUPER_ADMIN)
+      throw new BadRequestException('غير مسموح');
     const username = dto.username.trim().toLowerCase();
     const exists = await this.prisma.user.findUnique({ where: { username } });
     if (exists) throw new BadRequestException('اسم المستخدم موجود');
@@ -150,15 +183,26 @@ export class UsersService {
   }
 
   async update(actorId: string, id: string, dto: UpdateUserDto) {
-    const user = await this.prisma.user.findUnique({ where: { id }, include: { role: true } });
+    const user = await this.prisma.user.findUnique({
+      where: { id },
+      include: { role: true },
+    });
     if (!user) throw new NotFoundException();
     const data: Prisma.UserUpdateInput = {};
     if (dto.displayName !== undefined) data.displayName = dto.displayName;
-    if (dto.email !== undefined) data.email = dto.email ? dto.email.trim().toLowerCase() : null;
+    if (dto.email !== undefined)
+      data.email = dto.email ? dto.email.trim().toLowerCase() : null;
     if (dto.phone !== undefined) data.phone = dto.phone;
     if (dto.isActive !== undefined) data.isActive = dto.isActive;
-    if (dto.regionId !== undefined) data.region = dto.regionId ? { connect: { id: dto.regionId } } : { disconnect: true };
-    const updated = await this.prisma.user.update({ where: { id }, data, include: { role: true, region: true } });
+    if (dto.regionId !== undefined)
+      data.region = dto.regionId
+        ? { connect: { id: dto.regionId } }
+        : { disconnect: true };
+    const updated = await this.prisma.user.update({
+      where: { id },
+      data,
+      include: { role: true, region: true },
+    });
     await this.audit.log({
       action: 'USER_UPDATED',
       actorUserId: actorId,
@@ -188,12 +232,21 @@ export class UsersService {
 
   async remove(actorId: string, id: string) {
     if (id === actorId) {
-      throw deleteBlocked('You cannot delete your own account with a normal delete.', ['selfAccount']);
+      throw deleteBlocked(
+        'You cannot delete your own account with a normal delete.',
+        ['selfAccount'],
+      );
     }
-    const user = await this.prisma.user.findUnique({ where: { id }, include: { role: true } });
+    const user = await this.prisma.user.findUnique({
+      where: { id },
+      include: { role: true },
+    });
     if (!user) throw new NotFoundException();
     if (user.role.code === RoleCode.SUPER_ADMIN) {
-      throw deleteBlocked('Super-admin accounts require a force-delete override.', ['superAdminAccount']);
+      throw deleteBlocked(
+        'Super-admin accounts require a force-delete override.',
+        ['superAdminAccount'],
+      );
     }
     await this.assertUserDeletable(id);
     await this.detachUserReferences(id);
@@ -209,28 +262,56 @@ export class UsersService {
     return { ok: true };
   }
 
-  async forceRemove(actor: AuthUser, id: string, confirmationText: string, selfUsernameConfirm?: string, reason?: string) {
-    if (actor.roleCode !== RoleCode.SUPER_ADMIN && actor.roleCode !== RoleCode.ADMIN) {
+  async forceRemove(
+    actor: AuthUser,
+    id: string,
+    confirmationText: string,
+    selfUsernameConfirm?: string,
+    reason?: string,
+  ) {
+    if (
+      actor.roleCode !== RoleCode.SUPER_ADMIN &&
+      actor.roleCode !== RoleCode.ADMIN
+    ) {
       throw new ForbiddenException();
     }
     if (String(confirmationText ?? '').trim() !== 'DELETE') {
-      throw new BadRequestException('Confirmation must be the word DELETE (exact match).');
+      throw new BadRequestException(
+        'Confirmation must be the word DELETE (exact match).',
+      );
     }
-    const user = await this.prisma.user.findUnique({ where: { id }, include: { role: true } });
+    const user = await this.prisma.user.findUnique({
+      where: { id },
+      include: { role: true },
+    });
     if (!user) throw new NotFoundException();
-    if (user.role.code === RoleCode.SUPER_ADMIN && actor.roleCode !== RoleCode.SUPER_ADMIN) {
+    if (
+      user.role.code === RoleCode.SUPER_ADMIN &&
+      actor.roleCode !== RoleCode.SUPER_ADMIN
+    ) {
       throw new ForbiddenException();
     }
     if (id === actor.userId) {
-      const ok = (selfUsernameConfirm ?? '').trim().toLowerCase() === actor.username.trim().toLowerCase();
+      const ok =
+        (selfUsernameConfirm ?? '').trim().toLowerCase() ===
+        actor.username.trim().toLowerCase();
       if (!ok) {
-        throw new BadRequestException('To delete your own account, provide selfUsernameConfirm matching your username exactly.');
+        throw new BadRequestException(
+          'To delete your own account, provide selfUsernameConfirm matching your username exactly.',
+        );
       }
     }
-    const reassignTo = await this.resolveReassignTargetForForceDelete(actor.userId, id);
+    const reassignTo = await this.resolveReassignTargetForForceDelete(
+      actor.userId,
+      id,
+    );
     try {
       await this.prisma.$transaction(async (tx) => {
-        await this.detachUserReferences(id, { reassignToUserId: reassignTo }, tx);
+        await this.detachUserReferences(
+          id,
+          { reassignToUserId: reassignTo },
+          tx,
+        );
         await tx.refreshToken.deleteMany({ where: { userId: id } });
         await tx.user.delete({ where: { id } });
       });

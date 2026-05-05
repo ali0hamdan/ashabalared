@@ -1,5 +1,13 @@
 import { Transform } from 'class-transformer';
-import { Allow, IsBoolean, IsEmail, IsIn, IsOptional, IsString, MinLength } from 'class-validator';
+import {
+  Allow,
+  IsBoolean,
+  IsEmail,
+  IsIn,
+  IsOptional,
+  IsString,
+  MinLength,
+} from 'class-validator';
 import { RoleCode } from '@prisma/client';
 
 function emptyToUndefined({ value }: { value: unknown }) {
@@ -8,7 +16,9 @@ function emptyToUndefined({ value }: { value: unknown }) {
 }
 
 export class CreateUserDto {
-  @Transform(({ value }) => (typeof value === 'string' ? value.trim().toLowerCase() : value))
+  @Transform(({ value }) =>
+    typeof value === 'string' ? value.trim().toLowerCase() : value,
+  )
   @IsString()
   @MinLength(2)
   username!: string;
@@ -60,9 +70,11 @@ export class CreateUserDto {
       return u === RoleCode.ADMIN || u === RoleCode.DELIVERY ? u : v.trim();
     };
     const fromCode = normalize(value);
-    if (fromCode === RoleCode.ADMIN || fromCode === RoleCode.DELIVERY) return fromCode;
+    if (fromCode === RoleCode.ADMIN || fromCode === RoleCode.DELIVERY)
+      return fromCode;
     const fromRole = normalize(o.role);
-    if (fromRole === RoleCode.ADMIN || fromRole === RoleCode.DELIVERY) return fromRole;
+    if (fromRole === RoleCode.ADMIN || fromRole === RoleCode.DELIVERY)
+      return fromRole;
     return fromCode;
   })
   @IsIn([RoleCode.ADMIN, RoleCode.DELIVERY])

@@ -1,5 +1,10 @@
 import { Injectable, Logger } from '@nestjs/common';
-import { BeneficiaryStatus, DistributionStatus, Prisma, RoleCode } from '@prisma/client';
+import {
+  BeneficiaryStatus,
+  DistributionStatus,
+  Prisma,
+  RoleCode,
+} from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 
 function startOfToday() {
@@ -40,11 +45,17 @@ export class DashboardService {
   private async countPendingWorkflowDistributions(): Promise<number> {
     try {
       return await this.prisma.distributionRecord.count({
-        where: { status: { in: [DistributionStatus.PENDING, DistributionStatus.ASSIGNED] } },
+        where: {
+          status: {
+            in: [DistributionStatus.PENDING, DistributionStatus.ASSIGNED],
+          },
+        },
       });
     } catch (err) {
       if (this.isMissingAssignedEnum(err)) {
-        return this.prisma.distributionRecord.count({ where: { status: DistributionStatus.PENDING } });
+        return this.prisma.distributionRecord.count({
+          where: { status: DistributionStatus.PENDING },
+        });
       }
       throw err;
     }
@@ -107,7 +118,10 @@ export class DashboardService {
         })
         .filter((r) => r.isLow);
     } catch (err) {
-      this.logger.error('dashboard.summary: stock low-stock query failed', err instanceof Error ? err.stack : String(err));
+      this.logger.error(
+        'dashboard.summary: stock low-stock query failed',
+        err instanceof Error ? err.stack : String(err),
+      );
       throw err;
     }
 
@@ -124,12 +138,19 @@ export class DashboardService {
       this.prisma.beneficiary.count({
         where: { deletedAt: null, status: BeneficiaryStatus.ACTIVE },
       }),
-      this.prisma.user.count({ where: { isActive: true, role: { code: RoleCode.ADMIN } } }),
-      this.prisma.user.count({ where: { isActive: true, role: { code: RoleCode.DELIVERY } } }),
+      this.prisma.user.count({
+        where: { isActive: true, role: { code: RoleCode.ADMIN } },
+      }),
+      this.prisma.user.count({
+        where: { isActive: true, role: { code: RoleCode.DELIVERY } },
+      }),
       this.prisma.distributionRecord.count(),
       this.countPendingWorkflowDistributions(),
       this.prisma.distributionRecord.count({
-        where: { status: DistributionStatus.DELIVERED, deliveredAt: { gte: today } },
+        where: {
+          status: DistributionStatus.DELIVERED,
+          deliveredAt: { gte: today },
+        },
       }),
     ]);
 

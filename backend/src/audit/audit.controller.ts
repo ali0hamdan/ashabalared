@@ -19,14 +19,18 @@ export class AuditController {
   ) {
     const p = Math.max(1, parseInt(page, 10) || 1);
     const ps = Math.min(100, Math.max(1, parseInt(pageSize, 10) || 25));
-    const where = action ? { action: { contains: action, mode: 'insensitive' as const } } : {};
+    const where = action
+      ? { action: { contains: action, mode: 'insensitive' as const } }
+      : {};
     const [items, total] = await Promise.all([
       this.prisma.auditLog.findMany({
         where,
         orderBy: { createdAt: 'desc' },
         skip: (p - 1) * ps,
         take: ps,
-        include: { actor: { select: { id: true, displayName: true, username: true } } },
+        include: {
+          actor: { select: { id: true, displayName: true, username: true } },
+        },
       }),
       this.prisma.auditLog.count({ where }),
     ]);
