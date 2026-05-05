@@ -56,7 +56,7 @@ export class AuthController {
   ) {
     const token = this.readRefresh(req);
     await this.auth.logout(token, user.userId);
-    res.clearCookie(REFRESH_COOKIE, { path: '/' });
+    res.clearCookie(REFRESH_COOKIE, this.refreshCookieBaseOptions());
     return { ok: true };
   }
 
@@ -82,14 +82,35 @@ export class AuthController {
     return body?.refreshToken;
   }
 
+  private isProduction() {
+    return process.env.NODE_ENV === 'production';
+  }
+
+  /**
+   * Cross-origin SPA (e.g. https://nezhin.cc) calling https://api… requires SameSite=None; Secure.
+   * Same-site local dev (Vite + API on localhost) uses Lax + optional Secure.
+   */
   private setRefreshCookie(res: Response, refreshToken: string) {
     const maxAgeDays = 7;
     res.cookie(REFRESH_COOKIE, refreshToken, {
-      httpOnly: true,
-      sameSite: 'lax',
-      secure: process.env.NODE_ENV === 'production',
-      path: '/',
+      ...this.refreshCookieBaseOptions(),
       maxAge: maxAgeDays * 86400 * 1000,
     });
   }
+
+  private refreshCookieBaseOptions(): {
+    httpOnly: boolean;
+    path: string;
+    secure: boolean;
+    sameSite: 'lax' | 'none';
+  } {
+    const prod = this.isProduction();
+    return {
+      httpOnly: true,
+      path: '/',
+      secure: prod,
+      sameSite: prod ? 'none' : 'lax',
+    };
+  }
+
 }
