@@ -27,7 +27,7 @@ export class AuthService {
   }
 
   async login(dto: LoginDto, ip?: string) {
-    const identifier = dto.username.trim();
+    const identifier = dto.username.trim().normalize('NFC');
     if (!identifier) throw new UnauthorizedException('بيانات الدخول غير صحيحة');
 
     const user = await this.prisma.user.findFirst({
@@ -41,10 +41,17 @@ export class AuthService {
     });
     if (!user || !user.isActive)
       throw new UnauthorizedException('بيانات الدخول غير صحيحة');
-    if (!user.passwordHash)
-      throw new UnauthorizedException('بيانات الدخول غير صحيحة');
-    const ok = await bcrypt.compare(dto.password, user.passwordHash);
-    if (!ok) throw new UnauthorizedException('بيانات الدخول غير صحيحة');
+
+    const storedHash = user.passwordHash?.trim();
+    if (!storedHash) throw new UnauthorizedException('بيانات الدخول غير صحيحة');
+
+    let passwordOk = false;
+    try {
+      passwordOk = await bcrypt.compare(dto.password, storedHash);
+    } catch {
+      passwordOk = false;
+    }
+    if (!passwordOk) throw new UnauthorizedException('بيانات الدخول غير صحيحة');
 
     const accessToken = await this.jwt.signAsync(
       {

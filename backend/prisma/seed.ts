@@ -32,6 +32,7 @@ async function wipeApplicationData(tx: Prisma.TransactionClient) {
 async function main() {
   const username = (process.env.SEED_SUPERADMIN_USERNAME ?? 'alihmdn').trim().toLowerCase();
   const displayName = (process.env.SEED_SUPERADMIN_DISPLAY_NAME ?? 'ali hamda').trim();
+  // Bcrypt hash matches this value unless SEED_SUPERADMIN_PASSWORD is set (e.g. on Railway).
   const password = process.env.SEED_SUPERADMIN_PASSWORD ?? 'Alihamdan772003';
   const emailRaw = process.env.SEED_SUPERADMIN_EMAIL?.trim();
   const email = emailRaw ? emailRaw.toLowerCase() : null;
