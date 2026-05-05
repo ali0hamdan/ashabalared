@@ -37,47 +37,49 @@ async function main() {
   const email = emailRaw ? emailRaw.toLowerCase() : null;
 
   if (!username || !displayName || !password) {
-    throw new Error('SEED_SUPERADMIN_USERNAME, SEED_SUPERADMIN_DISPLAY_NAME, and SEED_SUPERADMIN_PASSWORD are required.');
+    throw new Error(
+      'SEED_SUPERADMIN_USERNAME, SEED_SUPERADMIN_DISPLAY_NAME, and SEED_SUPERADMIN_PASSWORD are required.',
+    );
   }
 
   const passwordHash = await bcrypt.hash(password, 10);
 
-  const [superRole] = await Promise.all([
-    prisma.role.upsert({
+  await prisma.$transaction(async (tx) => {
+    await wipeApplicationData(tx);
+
+    const superRole = await tx.role.upsert({
       where: { code: RoleCode.SUPER_ADMIN },
       update: {},
       create: { code: RoleCode.SUPER_ADMIN, nameAr: 'مدير عام', nameEn: 'Super Admin' },
-    }),
-    prisma.role.upsert({
+    });
+
+    await tx.role.upsert({
       where: { code: RoleCode.ADMIN },
       update: {},
       create: { code: RoleCode.ADMIN, nameAr: 'مسؤول', nameEn: 'Admin' },
-    }),
-    prisma.role.upsert({
+    });
+
+    await tx.role.upsert({
       where: { code: RoleCode.DELIVERY },
       update: {},
       create: { code: RoleCode.DELIVERY, nameAr: 'توصيل', nameEn: 'Delivery' },
-    }),
-  ]);
+    });
 
-  await prisma.$transaction(async (tx) => {
-    await wipeApplicationData(tx);
-  });
-
-  await prisma.user.create({
-    data: {
-      username,
-      displayName,
-      email,
-      passwordHash,
-      roleId: superRole.id,
-      mustChangePassword: false,
-      isActive: true,
-    },
+    await tx.user.create({
+      data: {
+        username,
+        displayName,
+        email,
+        passwordHash,
+        roleId: superRole.id,
+        mustChangePassword: false,
+        isActive: true,
+      },
+    });
   });
 
   console.log(
-    `Seed OK. Single super-admin: username \`${username}\`, display name "${displayName}". Roles (ADMIN/DELIVERY) exist for future users; no demo data.`,
+    `Seed OK. Single super-admin: username \`${username}\`, display name "${displayName}". Roles exist; no demo data.`,
   );
 }
 
