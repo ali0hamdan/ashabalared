@@ -60,21 +60,21 @@ function DistributionBeneficiaryAddress({
       {area ? (
         <div className="text-sm leading-snug">
           <span className="text-muted-foreground">{t('beneficiaryNew.area')}: </span>
-          <span className="font-medium">{area}</span>
+          <span className="font-semibold text-foreground">{area}</span>
         </div>
       ) : null}
       {street ? (
         <div
           className={
             area
-              ? 'text-xs leading-snug text-muted-foreground whitespace-pre-wrap'
+              ? 'text-xs leading-snug whitespace-pre-wrap'
               : 'text-sm leading-snug whitespace-pre-wrap'
           }
         >
-          <span className={area ? '' : 'text-muted-foreground'}>
-            {t('distributions.addressDetailLabel')}:{' '}
+          <span className="text-muted-foreground">{t('distributions.addressDetailLabel')}: </span>
+          <span className={area ? 'text-sm font-semibold text-foreground' : 'font-semibold text-foreground'}>
+            {street}
           </span>
-          <span className={area ? '' : 'font-medium'}>{street}</span>
         </div>
       ) : null}
     </div>
