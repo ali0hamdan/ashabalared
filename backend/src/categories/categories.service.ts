@@ -4,7 +4,7 @@ import {
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
-import { Prisma, RoleCode, StockUnit } from '@prisma/client';
+import { BeneficiaryStatus, Prisma, RoleCode, StockUnit } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { AuditService } from '../audit/audit.service';
 import type { AuthUser } from '../common/decorators/current-user.decorator';
@@ -278,17 +278,20 @@ export class CategoriesService {
     if (!category) throw new NotFoundException();
 
     const qTrim = q?.trim() || undefined;
-    const beneficiaryMatch: Prisma.BeneficiaryWhereInput | undefined = qTrim
-      ? {
-          deletedAt: null,
-          OR: [
-            { fullName: { contains: qTrim, mode: 'insensitive' } },
-            { phone: { contains: qTrim, mode: 'insensitive' } },
-            { area: { contains: qTrim, mode: 'insensitive' } },
-            { addressLine: { contains: qTrim, mode: 'insensitive' } },
-          ],
-        }
-      : { deletedAt: null };
+    const beneficiaryMatch: Prisma.BeneficiaryWhereInput = {
+      deletedAt: null,
+      status: BeneficiaryStatus.ACTIVE,
+      ...(qTrim
+        ? {
+            OR: [
+              { fullName: { contains: qTrim, mode: 'insensitive' } },
+              { phone: { contains: qTrim, mode: 'insensitive' } },
+              { area: { contains: qTrim, mode: 'insensitive' } },
+              { addressLine: { contains: qTrim, mode: 'insensitive' } },
+            ],
+          }
+        : {}),
+    };
 
     const items = await this.prisma.aidCategoryItem.findMany({
       where: { aidCategoryId: categoryId },

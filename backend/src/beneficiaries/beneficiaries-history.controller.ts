@@ -16,11 +16,13 @@ export class BeneficiariesHistoryController {
     @Query('q') q?: string,
     @Query('aidCategoryId') aidCategoryId?: string,
     @Query('aidCategoryItemId') aidCategoryItemId?: string,
+    @Query('includeInactive') includeInactive?: string,
   ) {
     return this.beneficiaries.deliveredHistory({
       q,
       aidCategoryId,
       aidCategoryItemId,
+      includeInactive,
     });
   }
 }

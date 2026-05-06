@@ -6,6 +6,7 @@ import {
 } from '@nestjs/common';
 
 import {
+  BeneficiaryStatus,
   DistributionStatus,
   Prisma,
   RoleCode,
@@ -155,10 +156,66 @@ export class DistributionService {
     const q = query.q?.trim();
 
     if (q) {
+      const iq = q;
       where.OR = [
-        { beneficiary: { fullName: { contains: q, mode: 'insensitive' } } },
-
-        { beneficiary: { phone: { contains: q, mode: 'insensitive' } } },
+        { beneficiary: { fullName: { contains: iq, mode: 'insensitive' } } },
+        { beneficiary: { phone: { contains: iq, mode: 'insensitive' } } },
+        { beneficiary: { area: { contains: iq, mode: 'insensitive' } } },
+        { beneficiary: { addressLine: { contains: iq, mode: 'insensitive' } } },
+        {
+          beneficiary: {
+            region: {
+              is: {
+                OR: [
+                  { nameAr: { contains: iq, mode: 'insensitive' } },
+                  { nameEn: { contains: iq, mode: 'insensitive' } },
+                ],
+              },
+            },
+          },
+        },
+        {
+          driver: {
+            OR: [
+              { displayName: { contains: iq, mode: 'insensitive' } },
+              { username: { contains: iq, mode: 'insensitive' } },
+              { phone: { contains: iq, mode: 'insensitive' } },
+            ],
+          },
+        },
+        {
+          createdBy: {
+            OR: [
+              { displayName: { contains: iq, mode: 'insensitive' } },
+              { username: { contains: iq, mode: 'insensitive' } },
+            ],
+          },
+        },
+        {
+          items: {
+            some: {
+              OR: [
+                {
+                  aidCategory: {
+                    name: { contains: iq, mode: 'insensitive' },
+                  },
+                },
+                {
+                  aidCategoryItem: {
+                    name: { contains: iq, mode: 'insensitive' },
+                  },
+                },
+                {
+                  stockItem: {
+                    aidCategoryItem: {
+                      name: { contains: iq, mode: 'insensitive' },
+                    },
+                  },
+                },
+              ],
+            },
+          },
+        },
       ];
     }
 
@@ -192,6 +249,11 @@ export class DistributionService {
     });
 
     if (!beneficiary) throw new NotFoundException('المستفيد غير موجود');
+    if (beneficiary.status !== BeneficiaryStatus.ACTIVE) {
+      throw new BadRequestException(
+        'لا يمكن إنشاء توزيع لمستفيد غير نشط — فعّل الملف أو اختر مستفيداً نشطاً.',
+      );
+    }
 
     const linesPayload: Prisma.DistributionRecordItemCreateWithoutDistributionRecordInput[] =
       [];

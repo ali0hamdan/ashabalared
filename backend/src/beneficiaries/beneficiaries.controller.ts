@@ -34,11 +34,23 @@ export class BeneficiariesController {
   @Roles(RoleCode.SUPER_ADMIN, RoleCode.ADMIN)
   list(
     @Query('q') q?: string,
+    /** Same as `q` (either may be used). */
+    @Query('search') search?: string,
     /** Raw query string — validated in BeneficiariesService (invalid values → 400, not 500). */
     @Query('status') status?: string,
     @Query('regionId') regionId?: string,
+    /** When true: only ACTIVE beneficiaries unless `includeInactive` is true (operational pickers). */
+    @Query('forSelection') forSelection?: string,
+    @Query('includeInactive') includeInactive?: string,
   ) {
-    return this.beneficiaries.list({ q, status, regionId });
+    const qCombined = (q?.trim() || search?.trim() || undefined) as string | undefined;
+    return this.beneficiaries.list({
+      q: qCombined,
+      status,
+      regionId,
+      forSelection,
+      includeInactive,
+    });
   }
 
   @Get('export/csv')

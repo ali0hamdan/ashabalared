@@ -3,13 +3,32 @@ import { Card, CardDescription, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { api } from '@/lib/api';
+import { cn } from '@/lib/utils';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { toast } from 'sonner';
 import { useTranslation } from 'react-i18next';
 
 type Line = { stockItemId: string; quantity: number };
+
+function formatBeneficiaryAddressLines(b: {
+  area?: string | null;
+  region?: { nameAr?: string | null; nameEn?: string | null } | null;
+  street?: string | null;
+  addressLine?: string | null;
+}): string {
+  const area =
+    (typeof b.area === 'string' ? b.area : '').trim() ||
+    (b.region?.nameAr ?? '').trim() ||
+    (b.region?.nameEn ?? '').trim() ||
+    '';
+  const rawStreet =
+    typeof b.street === 'string' ? b.street : typeof b.addressLine === 'string' ? b.addressLine : '';
+  const street = rawStreet.trim();
+  if (area && street) return `${area} / ${street}`;
+  return area || street || '';
+}
 
 export function DistributionNewPage() {
   const { t } = useTranslation();
@@ -20,12 +39,68 @@ export function DistributionNewPage() {
   const [notes, setNotes] = useState('');
   const [lines, setLines] = useState<Line[]>([{ stockItemId: '', quantity: 1 }]);
   const [saving, setSaving] = useState(false);
+  const [benSearchInput, setBenSearchInput] = useState('');
+  const [benSearchDebounced, setBenSearchDebounced] = useState('');
+  const [selectedPick, setSelectedPick] = useState<{
+    id: string;
+    line1: string;
+    line2: string;
+  } | null>(null);
 
-  const { data: beneficiaries, isLoading: benLoading } = useQuery({
-    queryKey: ['beneficiaries', 'dist-new'],
-    queryFn: async () => (await api.get('/beneficiaries')).data,
+  useEffect(() => {
+    const tmr = window.setTimeout(() => setBenSearchDebounced(benSearchInput.trim()), 350);
+    return () => window.clearTimeout(tmr);
+  }, [benSearchInput]);
+
+  const { data: beneficiaries, isLoading: benLoading, isFetching: benFetching } = useQuery({
+    queryKey: ['beneficiaries', 'dist-new', { forSelection: true, q: benSearchDebounced }],
+    queryFn: async () =>
+      (
+        await api.get('/beneficiaries', {
+          params: { forSelection: true, q: benSearchDebounced || undefined },
+        })
+      ).data,
   });
   const benRows = useMemo(() => (Array.isArray(beneficiaries) ? beneficiaries : []), [beneficiaries]);
+
+  useEffect(() => {
+    if (!beneficiaryId) {
+      setSelectedPick(null);
+      return;
+    }
+    if (selectedPick?.id === beneficiaryId) return;
+    const b = benRows.find((x: { id: string }) => x.id === beneficiaryId) as
+      | (Parameters<typeof formatBeneficiaryAddressLines>[0] & {
+          id: string;
+          fullName: string;
+          phone: string;
+        })
+      | undefined;
+    if (b) {
+      setSelectedPick({
+        id: b.id,
+        line1: `${b.fullName} — ${b.phone}`,
+        line2: formatBeneficiaryAddressLines(b),
+      });
+    }
+  }, [beneficiaryId, benRows, selectedPick?.id]);
+
+  function pickBeneficiary(b: {
+    id: string;
+    fullName: string;
+    phone: string;
+    area?: string | null;
+    region?: { nameAr?: string | null; nameEn?: string | null } | null;
+    street?: string | null;
+    addressLine?: string | null;
+  }) {
+    setBeneficiaryId(b.id);
+    setSelectedPick({
+      id: b.id,
+      line1: `${b.fullName} — ${b.phone}`,
+      line2: formatBeneficiaryAddressLines(b),
+    });
+  }
 
   const { data: stockRows, isLoading: stockLoading } = useQuery({
     queryKey: ['stock', 'dist-new'],
@@ -151,20 +226,67 @@ export function DistributionNewPage() {
           {benLoading ? (
             <div className="text-sm text-muted-foreground">{t('common.loading')}</div>
           ) : (
-            <div className="space-y-2">
+            <div className="space-y-3">
               <Label>{t('distributionNew.beneficiary')}</Label>
-              <select
-                className="h-10 w-full max-w-xl rounded-md border border-border bg-card px-3 text-sm"
-                value={beneficiaryId}
-                onChange={(e) => setBeneficiaryId(e.target.value)}
+              <Input
+                className="max-w-xl"
+                placeholder={t('distributionNew.beneficiarySearchPlaceholder')}
+                value={benSearchInput}
+                onChange={(e) => setBenSearchInput(e.target.value)}
+                aria-label={t('distributionNew.beneficiarySearchPlaceholder')}
+              />
+              {selectedPick ? (
+                <div className="max-w-xl rounded-lg border border-primary/30 bg-primary/5 px-3 py-2 text-sm">
+                  <div className="font-medium">{selectedPick.line1}</div>
+                  {selectedPick.line2 ? (
+                    <div className="mt-0.5 text-xs text-muted-foreground">{selectedPick.line2}</div>
+                  ) : null}
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    className="mt-2 h-8 px-2 text-xs text-muted-foreground"
+                    onClick={() => {
+                      setBeneficiaryId('');
+                      setSelectedPick(null);
+                    }}
+                  >
+                    {t('distributionNew.clearBeneficiarySelection')}
+                  </Button>
+                </div>
+              ) : null}
+              <div
+                className={cn(
+                  'max-h-72 max-w-xl overflow-y-auto rounded-md border border-border',
+                  benFetching && 'opacity-70',
+                )}
               >
-                <option value="">{t('common.dash')}</option>
-                {benRows.map((b: any) => (
-                  <option key={b.id} value={b.id}>
-                    {b.fullName} — {b.phone}
-                  </option>
-                ))}
-              </select>
+                {benRows.length === 0 ? (
+                  <div className="p-4 text-sm text-muted-foreground">{t('distributionNew.beneficiaryListEmpty')}</div>
+                ) : (
+                  <ul className="divide-y divide-border">
+                    {benRows.map((b: any) => {
+                      const sub = formatBeneficiaryAddressLines(b);
+                      return (
+                        <li key={b.id}>
+                          <button
+                            type="button"
+                            className={cn(
+                              'w-full px-3 py-2.5 text-start text-sm transition-colors hover:bg-muted/50',
+                              beneficiaryId === b.id && 'bg-primary/10 ring-1 ring-inset ring-primary/30',
+                            )}
+                            onClick={() => pickBeneficiary(b)}
+                          >
+                            <div className="font-medium">
+                              {b.fullName} — {b.phone}
+                            </div>
+                            {sub ? <div className="mt-0.5 text-xs text-muted-foreground">{sub}</div> : null}
+                          </button>
+                        </li>
+                      );
+                    })}
+                  </ul>
+                )}
+              </div>
             </div>
           )}
           <div className="flex justify-end gap-2 pt-2">

@@ -2,7 +2,6 @@ import { Transform, Type } from 'class-transformer';
 import {
   IsArray,
   IsBoolean,
-  IsEnum,
   IsIn,
   IsInt,
   IsOptional,
@@ -97,8 +96,9 @@ export class CreateBeneficiaryDto {
   @IsString()
   deliveryNotes?: string;
 
+  /** Day-to-day file state. `ARCHIVED` is only set via archive endpoints. */
   @IsOptional()
-  @IsEnum(BeneficiaryStatus)
+  @IsIn([BeneficiaryStatus.ACTIVE, BeneficiaryStatus.INACTIVE])
   status?: BeneficiaryStatus;
 
   /** Category-level selection; quantity may be 0 (checkbox only). Last entry wins per categoryId. */

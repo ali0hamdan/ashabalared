@@ -208,7 +208,13 @@ export function BeneficiariesPage() {
             </thead>
             <tbody>
               {rows.map((b: any) => (
-                <tr key={b.id} className="border-b border-border hover:bg-muted/30">
+                <tr
+                  key={b.id}
+                  className={cn(
+                    'border-b border-border hover:bg-muted/30',
+                    b.status === 'INACTIVE' && 'bg-muted/25 text-muted-foreground',
+                  )}
+                >
                   <td className="border-e border-border px-3 py-2.5 align-middle text-start break-words">
                     <Link className="font-medium text-primary hover:underline" to={`/app/beneficiaries/${b.id}`}>
                       {b.fullName}

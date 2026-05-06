@@ -2,7 +2,7 @@ import { Transform, Type } from 'class-transformer';
 import {
   IsArray,
   IsBoolean,
-  IsEnum,
+  IsIn,
   IsInt,
   IsOptional,
   IsString,
@@ -92,7 +92,7 @@ export class UpdateBeneficiaryDto {
   deliveryNotes?: string;
 
   @IsOptional()
-  @IsEnum(BeneficiaryStatus)
+  @IsIn([BeneficiaryStatus.ACTIVE, BeneficiaryStatus.INACTIVE])
   status?: BeneficiaryStatus;
 
   @IsOptional()

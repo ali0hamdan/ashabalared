@@ -16,6 +16,11 @@ import type { AuthUser } from '../common/decorators/current-user.decorator';
 import { CreateBeneficiaryDto } from './dto/create-beneficiary.dto';
 import { UpdateBeneficiaryDto } from './dto/update-beneficiary.dto';
 import { isAllowedBeneficiaryArea } from './constants/beneficiary-areas';
+import {
+  beneficiaryStatusSortRank,
+  parseForSelection,
+  parseIncludeInactive,
+} from './constants/beneficiary-list-query';
 import type { BeneficiaryCategoryNeedDto } from './dto/beneficiary-category-need.dto';
 import type { BeneficiaryItemNeedDto } from './dto/beneficiary-item-need.dto';
 
@@ -247,16 +252,44 @@ export class BeneficiariesService {
     return v;
   }
 
+  private sortBeneficiaryRowsForList<
+    T extends { status: BeneficiaryStatus; updatedAt: Date },
+  >(rows: T[]): T[] {
+    return [...rows].sort((a, b) => {
+      const byStatus =
+        beneficiaryStatusSortRank(a.status) -
+        beneficiaryStatusSortRank(b.status);
+      if (byStatus !== 0) return byStatus;
+      return b.updatedAt.getTime() - a.updatedAt.getTime();
+    });
+  }
+
   async list(query: {
     q?: string;
     status?: BeneficiaryStatus | string;
     regionId?: string;
+    forSelection?: string;
+    includeInactive?: string;
   }) {
     const where: Prisma.BeneficiaryWhereInput = { deletedAt: null };
-    const status = this.normalizeBeneficiaryStatus(
-      query.status as string | undefined,
-    );
-    if (status) where.status = status;
+    const forSelection = parseForSelection(query.forSelection);
+    const includeInactive = parseIncludeInactive(query.includeInactive);
+
+    if (forSelection) {
+      if (includeInactive) {
+        where.status = {
+          in: [BeneficiaryStatus.ACTIVE, BeneficiaryStatus.INACTIVE],
+        };
+      } else {
+        where.status = BeneficiaryStatus.ACTIVE;
+      }
+    } else {
+      const status = this.normalizeBeneficiaryStatus(
+        query.status as string | undefined,
+      );
+      if (status) where.status = status;
+    }
+
     const regionId = query.regionId?.trim() || undefined;
     if (regionId) where.regionId = regionId;
     const q = query.q?.trim();
@@ -267,6 +300,16 @@ export class BeneficiariesService {
         { area: { contains: q, mode: 'insensitive' } },
         { district: { contains: q, mode: 'insensitive' } },
         { addressLine: { contains: q, mode: 'insensitive' } },
+        {
+          region: {
+            is: {
+              OR: [
+                { nameAr: { contains: q, mode: 'insensitive' } },
+                { nameEn: { contains: q, mode: 'insensitive' } },
+              ],
+            },
+          },
+        },
       ];
     }
     const rows = await this.prisma.beneficiary.findMany({
@@ -274,7 +317,8 @@ export class BeneficiariesService {
       orderBy: { updatedAt: 'desc' },
       include: this.beneficiaryListInclude(),
     });
-    return rows.map((b) => this.withStreetSerialized(b));
+    const sorted = this.sortBeneficiaryRowsForList(rows);
+    return sorted.map((b) => this.withStreetSerialized(b));
   }
 
   async get(id: string) {
@@ -702,6 +746,7 @@ export class BeneficiariesService {
     q?: string;
     aidCategoryId?: string;
     aidCategoryItemId?: string;
+    includeInactive?: string;
   }) {
     const { categoryId, itemId } = await this.resolveDeliveredHistoryAidFilters(
       query?.aidCategoryId,
@@ -721,8 +766,13 @@ export class BeneficiariesService {
             }
           : undefined;
 
+    const includeInactive = parseIncludeInactive(query?.includeInactive);
+
     const where: Prisma.BeneficiaryWhereInput = {
       deletedAt: null,
+      status: includeInactive
+        ? { in: [BeneficiaryStatus.ACTIVE, BeneficiaryStatus.INACTIVE] }
+        : BeneficiaryStatus.ACTIVE,
       ...(qTrim
         ? {
             OR: [
@@ -773,7 +823,7 @@ export class BeneficiariesService {
 
     const filterLines = Boolean(categoryId || itemId);
 
-    return rows.map((b) => {
+    const mapped = rows.map((b) => {
       const deliveries = b.distributions
         .map((d) => {
           const items = filterLines
@@ -805,11 +855,24 @@ export class BeneficiariesService {
         phone: b.phone,
         area: b.area,
         familyCount: b.familyCount,
+        status: b.status,
         totalDeliveredDistributions: deliveries.length,
         lastDeliveredAt,
         deliveries,
       };
     });
+
+    mapped.sort((a, b) => {
+      const byStatus =
+        beneficiaryStatusSortRank(a.status as BeneficiaryStatus) -
+        beneficiaryStatusSortRank(b.status as BeneficiaryStatus);
+      if (byStatus !== 0) return byStatus;
+      const ad = a.lastDeliveredAt ? new Date(a.lastDeliveredAt).getTime() : 0;
+      const bd = b.lastDeliveredAt ? new Date(b.lastDeliveredAt).getTime() : 0;
+      if (bd !== ad) return bd - ad;
+      return a.fullName.localeCompare(b.fullName);
+    });
+    return mapped;
   }
 
   private lineItemDisplayName(it: {
@@ -840,6 +903,7 @@ export class BeneficiariesService {
       include: { region: true },
       orderBy: { updatedAt: 'desc' },
     });
+    const sorted = this.sortBeneficiaryRowsForList(rows);
     const header = [
       'الاسم',
       'الهاتف',
@@ -851,7 +915,7 @@ export class BeneficiariesService {
       'الحالة',
       'ملاحظات',
     ];
-    const lines = rows.map((r) =>
+    const lines = sorted.map((r) =>
       [
         r.fullName,
         r.phone,

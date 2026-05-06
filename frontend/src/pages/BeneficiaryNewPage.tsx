@@ -10,6 +10,7 @@ import {
   validateItemQtyInCheckedCategories,
 } from '@/lib/beneficiaryItemNeeds';
 import { BENEFICIARY_AREA_VALUES, isAllowedBeneficiaryArea } from '@/lib/beneficiaryAreas';
+import { BENEFICIARY_LIFECYCLE, type BeneficiaryLifecycle } from '@/lib/beneficiaryLifecycleStatus';
 import { api } from '@/lib/api';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useEffect, useMemo, useState } from 'react';
@@ -32,6 +33,7 @@ export function BeneficiaryNewPage() {
   const [street, setStreet] = useState('');
   const [householdSize, setHouseholdSize] = useState('1');
   const [canCook, setCanCook] = useState(false);
+  const [recordStatus, setRecordStatus] = useState<BeneficiaryLifecycle>(BENEFICIARY_LIFECYCLE.ACTIVE);
   const [categoryChecked, setCategoryChecked] = useState<Record<string, boolean>>({});
   const [itemFields, setItemFields] = useState<Record<string, { notes: string; qty: string }>>({});
   const [saving, setSaving] = useState(false);
@@ -101,6 +103,7 @@ export function BeneficiaryNewPage() {
       district: null,
       cookingStove: canCook,
       categoryNeeds,
+      status: recordStatus,
     };
     const streetTrim = street.trim();
     if (streetTrim) {
@@ -158,6 +161,28 @@ export function BeneficiaryNewPage() {
               value={householdSize}
               onChange={(e) => setHouseholdSize(e.target.value)}
             />
+          </div>
+          <div className="space-y-2 sm:col-span-2">
+            <Label>{t('beneficiaryNew.recordStatus')}</Label>
+            <p className="text-xs text-muted-foreground">{t('beneficiaryNew.recordStatusHint')}</p>
+            <div className="flex flex-wrap gap-2 rounded-md border border-border bg-muted/30 p-1">
+              <Button
+                type="button"
+                variant={recordStatus === BENEFICIARY_LIFECYCLE.ACTIVE ? 'primary' : 'outline'}
+                className="h-9 flex-1 sm:flex-initial sm:min-w-[7rem]"
+                onClick={() => setRecordStatus(BENEFICIARY_LIFECYCLE.ACTIVE)}
+              >
+                {t('beneficiaryNew.statusActive')}
+              </Button>
+              <Button
+                type="button"
+                variant={recordStatus === BENEFICIARY_LIFECYCLE.INACTIVE ? 'primary' : 'outline'}
+                className="h-9 flex-1 sm:flex-initial sm:min-w-[7rem]"
+                onClick={() => setRecordStatus(BENEFICIARY_LIFECYCLE.INACTIVE)}
+              >
+                {t('beneficiaryNew.statusInactive')}
+              </Button>
+            </div>
           </div>
           <div className="space-y-2 sm:col-span-2">
             <Label>{t('beneficiaryNew.area')}</Label>

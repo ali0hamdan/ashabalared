@@ -21,6 +21,11 @@ import { useTranslation } from 'react-i18next';
 import { ChevronDown } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { BENEFICIARY_AREA_VALUES, isAllowedBeneficiaryArea } from '@/lib/beneficiaryAreas';
+import {
+  BENEFICIARY_LIFECYCLE,
+  type BeneficiaryLifecycle,
+  normalizeBeneficiaryLifecycle,
+} from '@/lib/beneficiaryLifecycleStatus';
 
 export function BeneficiaryDetailPage() {
   const { t, i18n } = useTranslation();
@@ -46,6 +51,7 @@ export function BeneficiaryDetailPage() {
   const [phone, setPhone] = useState('');
   const [area, setArea] = useState('');
   const [street, setStreet] = useState('');
+  const [recordStatus, setRecordStatus] = useState<BeneficiaryLifecycle>(BENEFICIARY_LIFECYCLE.ACTIVE);
   const [householdSize, setHouseholdSize] = useState('1');
   const [canCook, setCanCook] = useState(false);
   const [categoryChecked, setCategoryChecked] = useState<Record<string, boolean>>({});
@@ -76,6 +82,7 @@ export function BeneficiaryDetailPage() {
     setArea(data.area ?? '');
     const row = data as { street?: string | null; addressLine?: string | null };
     setStreet(typeof row.street === 'string' ? row.street : typeof row.addressLine === 'string' ? row.addressLine : '');
+    setRecordStatus(normalizeBeneficiaryLifecycle(data.status));
     setHouseholdSize(String(data.familyCount ?? 1));
     setCanCook(Boolean(data.cookingStove));
     const rawNeeds = (data.itemNeeds ?? []) as Array<{
@@ -221,6 +228,7 @@ export function BeneficiaryDetailPage() {
       cookingStove: canCook,
       itemNeeds,
       categoryNeeds,
+      status: recordStatus,
     };
     const phoneTrim = phone.trim();
     if (phoneTrim.length >= 3) {
@@ -233,7 +241,10 @@ export function BeneficiaryDetailPage() {
     <div className="space-y-4 print:space-y-3">
       <div className="flex flex-col gap-3 print:hidden md:flex-row md:items-start md:justify-between">
         <div>
-          <h1 className="text-2xl font-bold">{data.fullName}</h1>
+          <h1 className="flex flex-wrap items-center gap-2 text-2xl font-bold">
+            <span>{data.fullName}</span>
+            {data.status === 'INACTIVE' ? <BeneficiaryStatusBadge status="INACTIVE" /> : null}
+          </h1>
           <p className="text-sm text-muted-foreground">{t('beneficiaryDetail.subtitle')}</p>
         </div>
         <div className="flex flex-wrap gap-2">
@@ -265,6 +276,28 @@ export function BeneficiaryDetailPage() {
             <div className="space-y-2">
               <Label>{t('beneficiaryNew.householdSize')}</Label>
               <Input type="number" min={1} value={householdSize} onChange={(e) => setHouseholdSize(e.target.value)} />
+            </div>
+            <div className="space-y-2 sm:col-span-2">
+              <Label>{t('beneficiaryNew.recordStatus')}</Label>
+              <p className="text-xs text-muted-foreground">{t('beneficiaryNew.recordStatusHint')}</p>
+              <div className="flex flex-wrap gap-2 rounded-md border border-border bg-muted/30 p-1">
+                <Button
+                  type="button"
+                  variant={recordStatus === BENEFICIARY_LIFECYCLE.ACTIVE ? 'primary' : 'outline'}
+                  className="h-9 flex-1 sm:flex-initial sm:min-w-[7rem]"
+                  onClick={() => setRecordStatus(BENEFICIARY_LIFECYCLE.ACTIVE)}
+                >
+                  {t('beneficiaryNew.statusActive')}
+                </Button>
+                <Button
+                  type="button"
+                  variant={recordStatus === BENEFICIARY_LIFECYCLE.INACTIVE ? 'primary' : 'outline'}
+                  className="h-9 flex-1 sm:flex-initial sm:min-w-[7rem]"
+                  onClick={() => setRecordStatus(BENEFICIARY_LIFECYCLE.INACTIVE)}
+                >
+                  {t('beneficiaryNew.statusInactive')}
+                </Button>
+              </div>
             </div>
             <div className="space-y-2 sm:col-span-2">
               <Label>{t('beneficiaryNew.area')}</Label>
@@ -322,6 +355,14 @@ export function BeneficiaryDetailPage() {
           <Card className="lg:col-span-2">
             <CardTitle>{t('beneficiaryDetail.basicTitle')}</CardTitle>
             <CardDescription className="mt-2">{t('beneficiaryDetail.basicDescShort')}</CardDescription>
+            {data.status === 'INACTIVE' ? (
+              <div className="mt-3 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-950 dark:border-amber-900/50 dark:bg-amber-950/40 dark:text-amber-100">
+                <div className="flex flex-wrap items-center gap-2">
+                  <span className="font-medium">{t('beneficiaryDetail.inactiveNotice')}</span>
+                  <BeneficiaryStatusBadge status="INACTIVE" />
+                </div>
+              </div>
+            ) : null}
             <dl className="mt-4 grid gap-3 sm:grid-cols-2 text-sm">
               <div>
                 <dt className="text-muted-foreground">{t('beneficiaryDetail.phone')}</dt>
