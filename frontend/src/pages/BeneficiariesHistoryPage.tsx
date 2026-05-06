@@ -4,6 +4,7 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Button } from '@/components/ui/button';
 import { api } from '@/lib/api';
+import type { PaginatedResponse } from '@/lib/paginated';
 import { useQuery } from '@tanstack/react-query';
 import { useEffect, useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
@@ -25,6 +26,7 @@ type HistoryRow = {
   phone: string;
   area: string | null;
   familyCount: number;
+  status?: string;
   totalDeliveredDistributions: number;
   lastDeliveredAt: string | null;
   deliveries: HistoryDelivery[];
@@ -46,9 +48,16 @@ export function BeneficiariesHistoryPage() {
   const [open, setOpen] = useState<Record<string, boolean>>({});
 
   useEffect(() => {
-    const tmr = window.setTimeout(() => setQDebounced(qInput.trim()), 350);
+    const tmr = window.setTimeout(() => setQDebounced(qInput.trim()), 400);
     return () => window.clearTimeout(tmr);
   }, [qInput]);
+
+  const [historyPage, setHistoryPage] = useState(1);
+  const historyPageSize = 20;
+
+  useEffect(() => {
+    setHistoryPage(1);
+  }, [qDebounced, aidCategoryId, aidCategoryItemId]);
 
   const { data: categories } = useQuery({
     queryKey: ['categories', 'beneficiaries-history-filters'],
@@ -77,21 +86,25 @@ export function BeneficiariesHistoryPage() {
     }
   }, [aidCategoryId, aidCategoryItemId, itemOpts]);
 
-  const { data, isLoading } = useQuery({
-    queryKey: ['beneficiaries-history', qDebounced, aidCategoryId, aidCategoryItemId],
+  const { data: historyPayload, isLoading, isPlaceholderData } = useQuery({
+    queryKey: ['beneficiaries-history', qDebounced, aidCategoryId, aidCategoryItemId, historyPage, historyPageSize],
     queryFn: async () =>
       (
-        await api.get<HistoryRow[]>('/beneficiaries-history', {
+        await api.get<PaginatedResponse<HistoryRow>>('/beneficiaries-history', {
           params: {
-            q: qDebounced || undefined,
+            search: qDebounced || undefined,
             aidCategoryId: aidCategoryId || undefined,
             aidCategoryItemId: aidCategoryItemId || undefined,
+            page: historyPage,
+            limit: historyPageSize,
           },
         })
       ).data,
+    placeholderData: (prev) => prev,
   });
 
-  const rows = useMemo(() => (Array.isArray(data) ? data : []), [data]);
+  const rows = useMemo(() => historyPayload?.data ?? [], [historyPayload?.data]);
+  const historyTotalPages = historyPayload?.totalPages ?? 0;
 
   const dateLocale = i18n.language.startsWith('ar') ? 'ar' : 'en-US';
 
@@ -180,14 +193,15 @@ export function BeneficiariesHistoryPage() {
         ) : null}
       </Card>
 
-      {isLoading ? (
+      {isLoading && !historyPayload ? (
         <div className="text-sm text-muted-foreground">{t('common.loading')}</div>
       ) : rows.length === 0 ? (
         <Card className="p-8 text-center text-sm text-muted-foreground">
           {!hasActiveFilters ? t('beneficiariesHistory.emptyDb') : t('beneficiariesHistory.empty')}
         </Card>
       ) : (
-        <ul className="space-y-3">
+        <>
+          <ul className={isPlaceholderData ? 'space-y-3 opacity-90' : 'space-y-3'}>
           {rows.map((b) => {
             const expanded = Boolean(open[b.id]);
             return (
@@ -282,6 +296,38 @@ export function BeneficiariesHistoryPage() {
             );
           })}
         </ul>
+          {historyTotalPages > 1 ? (
+            <div className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-border bg-card px-3 py-2.5 text-sm">
+              <span className="text-muted-foreground">
+                {t('beneficiariesHistory.pagingSummary', {
+                  page: historyPage,
+                  totalPages: historyTotalPages,
+                  total: historyPayload?.total ?? 0,
+                })}
+              </span>
+              <div className="flex gap-2">
+                <Button
+                  type="button"
+                  variant="outline"
+                  className="h-8 px-3 text-xs"
+                  disabled={historyPage <= 1}
+                  onClick={() => setHistoryPage((p) => Math.max(1, p - 1))}
+                >
+                  {t('beneficiariesHistory.pagingPrev')}
+                </Button>
+                <Button
+                  type="button"
+                  variant="outline"
+                  className="h-8 px-3 text-xs"
+                  disabled={historyPage >= historyTotalPages}
+                  onClick={() => setHistoryPage((p) => p + 1)}
+                >
+                  {t('beneficiariesHistory.pagingNext')}
+                </Button>
+              </div>
+            </div>
+          ) : null}
+        </>
       )}
     </div>
   );

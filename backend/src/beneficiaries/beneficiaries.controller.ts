@@ -42,14 +42,22 @@ export class BeneficiariesController {
     /** When true: only ACTIVE beneficiaries unless `includeInactive` is true (operational pickers). */
     @Query('forSelection') forSelection?: string,
     @Query('includeInactive') includeInactive?: string,
+    @Query('activeOnly') activeOnly?: string,
+    @Query('page') page?: string,
+    @Query('limit') limit?: string,
   ) {
-    const qCombined = (q?.trim() || search?.trim() || undefined) as string | undefined;
+    const qCombined = (q?.trim() || search?.trim() || undefined) as
+      | string
+      | undefined;
     return this.beneficiaries.list({
       q: qCombined,
       status,
       regionId,
       forSelection,
       includeInactive,
+      activeOnly,
+      page,
+      limit,
     });
   }
 

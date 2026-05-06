@@ -46,8 +46,14 @@ export class DistributionController {
     @Query('status') status?: string,
 
     @Query('q') q?: string,
+
+    @Query('search') search?: string,
+
+    @Query('page') page?: string,
+
+    @Query('limit') limit?: string,
   ) {
-    return this.distribution.list(actor, { status, q });
+    return this.distribution.list(actor, { status, q, search, page, limit });
   }
 
   @Get(':id')

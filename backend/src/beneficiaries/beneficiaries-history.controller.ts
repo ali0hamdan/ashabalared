@@ -14,15 +14,20 @@ export class BeneficiariesHistoryController {
   @Roles(RoleCode.SUPER_ADMIN, RoleCode.ADMIN)
   deliveredHistory(
     @Query('q') q?: string,
+    @Query('search') search?: string,
     @Query('aidCategoryId') aidCategoryId?: string,
     @Query('aidCategoryItemId') aidCategoryItemId?: string,
     @Query('includeInactive') includeInactive?: string,
+    @Query('page') page?: string,
+    @Query('limit') limit?: string,
   ) {
     return this.beneficiaries.deliveredHistory({
-      q,
+      q: q?.trim() || search?.trim() || undefined,
       aidCategoryId,
       aidCategoryItemId,
       includeInactive,
+      page,
+      limit,
     });
   }
 }

@@ -123,7 +123,10 @@
     "deleteTitle": "إزالة المستفيد؟",
     "deleteDesc": "سيتم أرشفة «{{name}}» وإخفاؤه من القوائم النشطة.",
     "deleteSuccess": "تم أرشفة المستفيد",
-    "forceArchiveSuccess": "تم إلغاء التوزيعات المفتوحة ثم أرشفة المستفيد"
+    "forceArchiveSuccess": "تم إلغاء التوزيعات المفتوحة ثم أرشفة المستفيد",
+    "pagingPrev": "السابق",
+    "pagingNext": "التالي",
+    "pagingSummary": "صفحة {{page}} من {{totalPages}} ({{total}} إجمالاً)"
   },
   "beneficiariesHistory": {
     "title": "سجل استلام المستفيدين",
@@ -150,7 +153,10 @@
     "historyDesc": "يُعرض فقط التوزيع المكتمل (تم التسليم).",
     "noDeliveriesYet": "لا توجد توزيعات مسلّمة لهذا المستفيد بعد.",
     "noLines": "لا بنود لهذا التوزيع.",
-    "by": "السائق / من أنجز التسليم"
+    "by": "السائق / من أنجز التسليم",
+    "pagingPrev": "السابق",
+    "pagingNext": "التالي",
+    "pagingSummary": "صفحة {{page}} من {{totalPages}} ({{total}} إجمالاً)"
   },
   "adminOverride": {
     "blockedRelations": "العلاقات المانعة",
@@ -294,6 +300,9 @@
     "subtitle": "اختيار يدوي للبنود — يُخصم المخزون عندما يؤكد السائق المعيّن التسليم",
     "searchPlaceholder": "ابحث بالمستفيد أو الهاتف أو العنوان أو السائق أو البند...",
     "noResults": "لا توجد توزيعات.",
+    "pagingPrev": "السابق",
+    "pagingNext": "التالي",
+    "pagingSummary": "صفحة {{page}} من {{totalPages}} ({{total}} إجمالاً)",
     "filterAll": "كل الحالات",
     "statusPending": "قيد الانتظار",
     "statusAssigned": "مسند",
@@ -359,6 +368,9 @@
     "beneficiarySearchPlaceholder": "ابحث بالاسم أو الهاتف أو الحي أو العنوان…",
     "beneficiaryListEmpty": "لا يوجد مستفيدون يطابقون البحث.",
     "clearBeneficiarySelection": "إلغاء الاختيار",
+    "beneficiaryPagingSummary": "صفحة {{page}} من {{totalPages}} ({{total}} مطابقة)",
+    "beneficiaryPagingPrev": "السابق",
+    "beneficiaryPagingNext": "التالي",
     "notes": "ملاحظات (اختياري)",
     "qty": "الكمية",
     "addLine": "إضافة سطر",

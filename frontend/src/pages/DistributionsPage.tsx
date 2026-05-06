@@ -14,6 +14,8 @@ import { useTranslation } from 'react-i18next';
 import type { TFunction } from 'i18next';
 import { parseDeleteBlocked, parseForceDeleteForbidden, type DeleteBlockedPayload } from '@/lib/deleteBlocked';
 import { AdminForceDeletePanel } from '@/components/AdminForceDeletePanel';
+import { cn } from '@/lib/utils';
+import type { PaginatedResponse } from '@/lib/paginated';
 
 function formatDistLine(it: any, t: TFunction) {
   const name = it.stockItem?.aidCategoryItem?.name ?? it.aidCategory?.name ?? '';
@@ -102,23 +104,34 @@ export function DistributionsPage() {
   const [searchDebounced, setSearchDebounced] = useState('');
 
   useEffect(() => {
-    const tmr = window.setTimeout(() => setSearchDebounced(searchInput.trim()), 350);
+    const tmr = window.setTimeout(() => setSearchDebounced(searchInput.trim()), 400);
     return () => window.clearTimeout(tmr);
   }, [searchInput]);
 
-  const { data, isLoading } = useQuery({
-    queryKey: ['distributions', status, searchDebounced],
+  const [page, setPage] = useState(1);
+  const pageSize = 25;
+
+  useEffect(() => {
+    setPage(1);
+  }, [status, searchDebounced]);
+
+  const { data, isLoading, isPlaceholderData } = useQuery({
+    queryKey: ['distributions', status, searchDebounced, page, pageSize],
     queryFn: async () =>
       (
-        await api.get('/distributions', {
+        await api.get<PaginatedResponse<Record<string, unknown>>>('/distributions', {
           params: {
             status: status || undefined,
-            q: searchDebounced || undefined,
+            search: searchDebounced || undefined,
+            page,
+            limit: pageSize,
           },
         })
       ).data,
+    placeholderData: (prev) => prev,
   });
-  const rows = useMemo(() => (Array.isArray(data) ? data : []), [data]);
+  const rows = useMemo(() => data?.data ?? [], [data?.data]);
+  const totalPages = data?.totalPages ?? 0;
 
   const [deliverId, setDeliverId] = useState<string | null>(null);
   const [proof, setProof] = useState('');
@@ -280,8 +293,8 @@ export function DistributionsPage() {
         </div>
       </div>
 
-      <Card className="max-w-full overflow-x-auto p-0">
-        {isLoading ? (
+      <Card className={cn('max-w-full overflow-x-auto p-0', isPlaceholderData && 'opacity-90')}>
+        {isLoading && !data ? (
           <div className="p-6 text-sm text-muted-foreground">{t('common.loading')}</div>
         ) : rows.length === 0 ? (
           <div className="p-10 text-center text-sm text-muted-foreground">{t('distributions.noResults')}</div>
@@ -476,6 +489,37 @@ export function DistributionsPage() {
                 </div>
               ))}
             </div>
+            {totalPages > 1 ? (
+              <div className="flex flex-wrap items-center justify-between gap-2 border-t border-border px-3 py-2.5 text-sm">
+                <span className="text-muted-foreground">
+                  {t('distributions.pagingSummary', {
+                    page,
+                    totalPages,
+                    total: data?.total ?? 0,
+                  })}
+                </span>
+                <div className="flex gap-2">
+                  <Button
+                    type="button"
+                    variant="outline"
+                    className="h-8 px-3 text-xs"
+                    disabled={page <= 1}
+                    onClick={() => setPage((p) => Math.max(1, p - 1))}
+                  >
+                    {t('distributions.pagingPrev')}
+                  </Button>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    className="h-8 px-3 text-xs"
+                    disabled={page >= totalPages}
+                    onClick={() => setPage((p) => p + 1)}
+                  >
+                    {t('distributions.pagingNext')}
+                  </Button>
+                </div>
+              </div>
+            ) : null}
           </>
         )}
       </Card>

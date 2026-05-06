@@ -270,7 +270,16 @@ export class CategoriesService {
    * Beneficiaries who need this aid category: item-level needs (needed, qty ≥ 1 or notes) under the category’s items,
    * or any `BeneficiaryCategory` row for this category (including quantity 0 = category checkbox only).
    */
-  async beneficiariesNeedingCategory(categoryId: string, q?: string) {
+  async beneficiariesNeedingCategory(
+    categoryId: string,
+    q?: string,
+    limitRaw?: string,
+  ) {
+    let maxOut = 120;
+    const parsedLim = parseInt(limitRaw ?? '', 10);
+    if (Number.isFinite(parsedLim)) {
+      maxOut = Math.min(200, Math.max(1, parsedLim));
+    }
     const category = await this.prisma.aidCategory.findFirst({
       where: { id: categoryId },
       select: { id: true, name: true },
@@ -411,7 +420,7 @@ export class CategoriesService {
       });
     }
 
-    const beneficiaries = [...byBen.values()]
+    const beneficiariesAll = [...byBen.values()]
       .map((b) => ({
         id: b.id,
         fullName: b.fullName,
@@ -423,11 +432,14 @@ export class CategoriesService {
       }))
       .sort((a, b) => a.fullName.localeCompare(b.fullName));
 
+    const beneficiaries = beneficiariesAll.slice(0, maxOut);
+
     return {
       categoryId: category.id,
       categoryName: category.name,
-      count: beneficiaries.length,
+      count: beneficiariesAll.length,
       beneficiaries,
+      truncated: beneficiariesAll.length > beneficiaries.length,
     };
   }
 }

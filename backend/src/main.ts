@@ -3,7 +3,7 @@ import { config as loadEnv } from 'dotenv';
 import { ValidationPipe } from '@nestjs/common';
 import { NestFactory } from '@nestjs/core';
 import helmet from 'helmet';
-const cookieParser = require('cookie-parser');
+import cookieParser from 'cookie-parser';
 import type { Express } from 'express';
 import { AppModule } from './app.module';
 import { ProductionExceptionFilter } from './common/filters/production-exception.filter';

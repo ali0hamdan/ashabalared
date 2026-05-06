@@ -28,6 +28,90 @@ import {
 
 import type { AuthUser } from '../common/decorators/current-user.decorator';
 
+import {
+  buildPaginatedResult,
+  parsePaginationQuery,
+  type PaginatedResult,
+} from '../common/pagination';
+
+/** Slim payload for list/grid pages (avoids heavy stock nesting). */
+const distributionListSelect = {
+  id: true,
+  status: true,
+  createdAt: true,
+  beneficiaryId: true,
+
+  beneficiary: {
+    select: {
+      id: true,
+
+      fullName: true,
+
+      phone: true,
+
+      area: true,
+
+      addressLine: true,
+
+      region: { select: { nameAr: true, nameEn: true } },
+    },
+  },
+
+  items: {
+    select: {
+      id: true,
+
+      quantityPlanned: true,
+
+      quantityDelivered: true,
+
+      aidCategoryId: true,
+
+      aidCategoryItemId: true,
+
+      aidCategory: { select: { name: true } },
+
+      aidCategoryItem: {
+        select: {
+          id: true,
+
+          aidCategoryId: true,
+
+          name: true,
+
+          unit: true,
+
+          sortOrder: true,
+        },
+      },
+
+      stockItem: {
+        select: {
+          aidCategoryItem: {
+            select: {
+              id: true,
+
+              name: true,
+
+              aidCategoryId: true,
+
+              aidCategory: { select: { id: true, name: true } },
+            },
+          },
+        },
+      },
+    },
+  },
+
+  createdBy: { select: { id: true, displayName: true, username: true } },
+
+  driver: {
+    select: { id: true, displayName: true, username: true, phone: true },
+  },
+
+  completedBy: { select: { id: true, displayName: true, username: true } },
+} satisfies Prisma.DistributionRecordSelect;
+
 const distInclude = {
   beneficiary: { include: { region: true } },
 
@@ -141,8 +225,20 @@ export class DistributionService {
 
   async list(
     actor: { userId: string; roleCode: RoleCode },
-    query: { status?: string; q?: string },
-  ) {
+    query: {
+      status?: string;
+      q?: string;
+      search?: string;
+      page?: string;
+      limit?: string;
+    },
+  ): Promise<
+    PaginatedResult<
+      Prisma.DistributionRecordGetPayload<{
+        select: typeof distributionListSelect;
+      }>
+    >
+  > {
     const where: Prisma.DistributionRecordWhereInput = {};
 
     if (actor.roleCode === RoleCode.DELIVERY) {
@@ -153,7 +249,9 @@ export class DistributionService {
 
     if (status) where.status = status;
 
-    const q = query.q?.trim();
+    const q = (query.q?.trim() || query.search?.trim() || undefined) as
+      | string
+      | undefined;
 
     if (q) {
       const iq = q;
@@ -219,13 +317,23 @@ export class DistributionService {
       ];
     }
 
-    return this.prisma.distributionRecord.findMany({
-      where,
-
-      orderBy: { createdAt: 'desc' },
-
-      include: distInclude,
+    const { page, limit, skip } = parsePaginationQuery({
+      page: query.page,
+      limit: query.limit,
     });
+
+    const [total, rows] = await Promise.all([
+      this.prisma.distributionRecord.count({ where }),
+      this.prisma.distributionRecord.findMany({
+        where,
+        orderBy: { createdAt: 'desc' },
+        skip,
+        take: limit,
+        select: distributionListSelect,
+      }),
+    ]);
+
+    return buildPaginatedResult(rows, total, page, limit);
   }
 
   async get(actor: { userId: string; roleCode: RoleCode }, id: string) {

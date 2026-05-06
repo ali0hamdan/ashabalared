@@ -123,7 +123,10 @@
     "deleteTitle": "Remove beneficiary?",
     "deleteDesc": "This will archive \"{{name}}\" and hide them from active lists. You can still find them in history if needed.",
     "deleteSuccess": "Beneficiary archived",
-    "forceArchiveSuccess": "Open distributions were cancelled and the beneficiary was archived"
+    "forceArchiveSuccess": "Open distributions were cancelled and the beneficiary was archived",
+    "pagingPrev": "Previous",
+    "pagingNext": "Next",
+    "pagingSummary": "Page {{page}} of {{totalPages}} ({{total}} total)"
   },
   "beneficiariesHistory": {
     "title": "Beneficiaries history",
@@ -150,7 +153,10 @@
     "historyDesc": "Only completed (delivered) distributions are listed.",
     "noDeliveriesYet": "No delivered distributions yet for this beneficiary.",
     "noLines": "No line items on this delivery.",
-    "by": "Driver / completed by"
+    "by": "Driver / completed by",
+    "pagingPrev": "Previous",
+    "pagingNext": "Next",
+    "pagingSummary": "Page {{page}} of {{totalPages}} ({{total}} total)"
   },
   "adminOverride": {
     "blockedRelations": "Blocking relations",
@@ -294,6 +300,9 @@
     "subtitle": "Manual item selection — stock deducts when the assigned driver confirms delivery",
     "searchPlaceholder": "Search by beneficiary, phone, address, driver, or item...",
     "noResults": "No distributions found.",
+    "pagingPrev": "Previous",
+    "pagingNext": "Next",
+    "pagingSummary": "Page {{page}} of {{totalPages}} ({{total}} total)",
     "filterAll": "All statuses",
     "statusPending": "Pending",
     "statusAssigned": "Assigned",
@@ -359,6 +368,9 @@
     "beneficiarySearchPlaceholder": "Search by name, phone, area, or address…",
     "beneficiaryListEmpty": "No beneficiaries match your search.",
     "clearBeneficiarySelection": "Clear selection",
+    "beneficiaryPagingSummary": "Page {{page}} of {{totalPages}} ({{total}} matching)",
+    "beneficiaryPagingPrev": "Previous",
+    "beneficiaryPagingNext": "Next",
     "notes": "Notes (optional)",
     "qty": "Quantity",
     "addLine": "Add line",

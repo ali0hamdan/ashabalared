@@ -7,7 +7,8 @@ import { api } from '@/lib/api';
 import { BeneficiaryStatusBadge } from '@/components/StatusBadge';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { Link } from 'react-router-dom';
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
+import type { PaginatedResponse } from '@/lib/paginated';
 import { toast } from 'sonner';
 import { useTranslation } from 'react-i18next';
 import { useAuthStore } from '@/store/auth';
@@ -41,7 +42,20 @@ export function BeneficiariesPage() {
   const { t } = useTranslation();
   const role = useAuthStore((s) => s.user?.roleCode);
   const qc = useQueryClient();
-  const [q, setQ] = useState('');
+  const [searchInput, setSearchInput] = useState('');
+  const [searchDebounced, setSearchDebounced] = useState('');
+  const [page, setPage] = useState(1);
+  const pageSize = 25;
+
+  useEffect(() => {
+    const tmr = window.setTimeout(() => setSearchDebounced(searchInput.trim()), 400);
+    return () => window.clearTimeout(tmr);
+  }, [searchInput]);
+
+  useEffect(() => {
+    setPage(1);
+  }, [searchDebounced]);
+
   const [delRow, setDelRow] = useState<{ id: string; fullName: string } | null>(null);
   const [archivePending, setArchivePending] = useState(false);
   const [forceBen, setForceBen] = useState<{ id: string; fullName: string; blocked: DeleteBlockedPayload } | null>(null);
@@ -49,12 +63,24 @@ export function BeneficiariesPage() {
   const [forceBenReason, setForceBenReason] = useState('');
   const [forceBenPending, setForceBenPending] = useState(false);
 
-  const { data, isLoading, refetch } = useQuery({
-    queryKey: ['beneficiaries', q],
-    queryFn: async () => (await api.get('/beneficiaries', { params: { q: q || undefined } })).data,
+  const { data, isLoading, isPlaceholderData, refetch } = useQuery({
+    queryKey: ['beneficiaries', searchDebounced, page, pageSize],
+    queryFn: async () =>
+      (
+        await api.get<PaginatedResponse<Record<string, unknown>>>('/beneficiaries', {
+          params: {
+            search: searchDebounced || undefined,
+            page,
+            limit: pageSize,
+          },
+        })
+      ).data,
+    placeholderData: (prev) => prev,
   });
 
-  const rows = useMemo(() => (Array.isArray(data) ? data : []), [data]);
+  const rows = useMemo(() => data?.data ?? [], [data?.data]);
+  const total = data?.total ?? 0;
+  const totalPages = data?.totalPages ?? 0;
 
   async function archiveBeneficiary() {
     if (!delRow) return;
@@ -152,8 +178,8 @@ export function BeneficiariesPage() {
           <Input
             className="min-h-10 w-full flex-1"
             placeholder={t('beneficiaries.searchPlaceholder')}
-            value={q}
-            onChange={(e) => setQ(e.target.value)}
+            value={searchInput}
+            onChange={(e) => setSearchInput(e.target.value)}
           />
           <Button type="button" variant="outline" className="h-10 shrink-0 sm:min-w-[7.5rem]" onClick={() => void refetch()}>
             {t('common.apply')}
@@ -161,8 +187,10 @@ export function BeneficiariesPage() {
         </div>
       </Card>
 
-      <Card className="max-w-full overflow-x-auto p-0">
-        {isLoading ? (
+      <Card
+        className={cn('max-w-full overflow-x-auto p-0', isPlaceholderData && 'opacity-90')}
+      >
+        {isLoading && !data ? (
           <div className="p-6 text-sm text-muted-foreground">{t('common.loading')}</div>
         ) : rows.length === 0 ? (
           <div className="p-10 text-center text-sm text-muted-foreground">{t('common.noResults')}</div>
@@ -275,6 +303,37 @@ export function BeneficiariesPage() {
             </tbody>
           </table>
         )}
+        {totalPages > 1 ? (
+          <div className="flex flex-wrap items-center justify-between gap-2 border-t border-border px-3 py-2.5 text-sm">
+            <span className="text-muted-foreground">
+              {t('beneficiaries.pagingSummary', {
+                page,
+                totalPages,
+                total,
+              })}
+            </span>
+            <div className="flex gap-2">
+              <Button
+                type="button"
+                variant="outline"
+                className="h-8 px-3 text-xs"
+                disabled={page <= 1}
+                onClick={() => setPage((p) => Math.max(1, p - 1))}
+              >
+                {t('beneficiaries.pagingPrev')}
+              </Button>
+              <Button
+                type="button"
+                variant="outline"
+                className="h-8 px-3 text-xs"
+                disabled={page >= totalPages}
+                onClick={() => setPage((p) => p + 1)}
+              >
+                {t('beneficiaries.pagingNext')}
+              </Button>
+            </div>
+          </div>
+        ) : null}
       </Card>
 
       <Dialog

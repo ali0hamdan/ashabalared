@@ -122,6 +122,12 @@ model Beneficiary {
   itemNeeds      BeneficiaryItemNeed[]
   distributions  DistributionRecord[]
   timelineEvents BeneficiaryTimelineEvent[]
+
+  @@index([deletedAt, status])
+  @@index([fullName])
+  @@index([phone])
+  @@index([area])
+  @@index([status])
 }
 
 model BeneficiaryCategory {
@@ -245,6 +251,12 @@ model DistributionRecord {
 
   items       DistributionRecordItem[]
   assignments DeliveryAssignment[]
+
+  @@index([status])
+  @@index([beneficiaryId])
+  @@index([driverId])
+  @@index([createdById])
+  @@index([createdAt(sort: Desc)])
 }
 
 model DistributionRecordItem {

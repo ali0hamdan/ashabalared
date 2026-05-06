@@ -43,8 +43,9 @@ export class CategoriesController {
   beneficiariesNeedingCategory(
     @Param('id') id: string,
     @Query('q') q?: string,
+    @Query('limit') limit?: string,
   ) {
-    return this.categories.beneficiariesNeedingCategory(id, q);
+    return this.categories.beneficiariesNeedingCategory(id, q, limit);
   }
 
   @Post()

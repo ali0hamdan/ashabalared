@@ -23,6 +23,12 @@ import {
 } from './constants/beneficiary-list-query';
 import type { BeneficiaryCategoryNeedDto } from './dto/beneficiary-category-need.dto';
 import type { BeneficiaryItemNeedDto } from './dto/beneficiary-item-need.dto';
+import {
+  buildPaginatedResult,
+  parseBoolQuery,
+  parsePaginationQuery,
+  type PaginatedResult,
+} from '../common/pagination';
 
 /** Stored when no phone is supplied (non-empty display; satisfies legacy min length). */
 const BENEFICIARY_PHONE_NOT_PROVIDED = 'غير متوفر';
@@ -270,24 +276,35 @@ export class BeneficiariesService {
     regionId?: string;
     forSelection?: string;
     includeInactive?: string;
-  }) {
+    activeOnly?: string;
+    page?: string;
+    limit?: string;
+  }): Promise<
+    PaginatedResult<Record<string, unknown> & { street: string | null }>
+  > {
     const where: Prisma.BeneficiaryWhereInput = { deletedAt: null };
-    const forSelection = parseForSelection(query.forSelection);
-    const includeInactive = parseIncludeInactive(query.includeInactive);
+    const activeOnly = parseBoolQuery(query.activeOnly);
 
-    if (forSelection) {
-      if (includeInactive) {
-        where.status = {
-          in: [BeneficiaryStatus.ACTIVE, BeneficiaryStatus.INACTIVE],
-        };
-      } else {
-        where.status = BeneficiaryStatus.ACTIVE;
-      }
+    if (activeOnly) {
+      where.status = BeneficiaryStatus.ACTIVE;
     } else {
-      const status = this.normalizeBeneficiaryStatus(
-        query.status as string | undefined,
-      );
-      if (status) where.status = status;
+      const forSelection = parseForSelection(query.forSelection);
+      const includeInactive = parseIncludeInactive(query.includeInactive);
+
+      if (forSelection) {
+        if (includeInactive) {
+          where.status = {
+            in: [BeneficiaryStatus.ACTIVE, BeneficiaryStatus.INACTIVE],
+          };
+        } else {
+          where.status = BeneficiaryStatus.ACTIVE;
+        }
+      } else {
+        const status = this.normalizeBeneficiaryStatus(
+          query.status as string | undefined,
+        );
+        if (status) where.status = status;
+      }
     }
 
     const regionId = query.regionId?.trim() || undefined;
@@ -312,13 +329,30 @@ export class BeneficiariesService {
         },
       ];
     }
-    const rows = await this.prisma.beneficiary.findMany({
-      where,
-      orderBy: { updatedAt: 'desc' },
-      include: this.beneficiaryListInclude(),
+
+    const { page, limit, skip } = parsePaginationQuery({
+      page: query.page,
+      limit: query.limit,
     });
-    const sorted = this.sortBeneficiaryRowsForList(rows);
-    return sorted.map((b) => this.withStreetSerialized(b));
+
+    const orderBy: Prisma.BeneficiaryOrderByWithRelationInput[] = [
+      { status: 'asc' },
+      { updatedAt: 'desc' },
+    ];
+
+    const [total, rows] = await Promise.all([
+      this.prisma.beneficiary.count({ where }),
+      this.prisma.beneficiary.findMany({
+        where,
+        orderBy,
+        skip,
+        take: limit,
+        include: this.beneficiaryListInclude(),
+      }),
+    ]);
+
+    const data = rows.map((b) => this.withStreetSerialized(b));
+    return buildPaginatedResult(data, total, page, limit);
   }
 
   async get(id: string) {
@@ -747,7 +781,9 @@ export class BeneficiariesService {
     aidCategoryId?: string;
     aidCategoryItemId?: string;
     includeInactive?: string;
-  }) {
+    page?: string;
+    limit?: string;
+  }): Promise<PaginatedResult<Record<string, unknown>>> {
     const { categoryId, itemId } = await this.resolveDeliveredHistoryAidFilters(
       query?.aidCategoryId,
       query?.aidCategoryItemId,
@@ -780,6 +816,7 @@ export class BeneficiariesService {
               { phone: { contains: qTrim, mode: 'insensitive' } },
               { area: { contains: qTrim, mode: 'insensitive' } },
               { district: { contains: qTrim, mode: 'insensitive' } },
+              { addressLine: { contains: qTrim, mode: 'insensitive' } },
             ],
           }
         : {}),
@@ -795,31 +832,60 @@ export class BeneficiariesService {
         : {}),
     };
 
-    const rows = await this.prisma.beneficiary.findMany({
-      where,
-      orderBy: { fullName: 'asc' },
+    const { page, limit, skip } = parsePaginationQuery({
+      page: query?.page,
+      limit: query?.limit,
+    });
+
+    const orderBy: Prisma.BeneficiaryOrderByWithRelationInput[] = [
+      { status: 'asc' },
+      { fullName: 'asc' },
+    ];
+
+    const historyDistInclude = {
+      where: { status: DistributionStatus.DELIVERED },
+      orderBy: { deliveredAt: 'desc' as const },
       include: {
-        distributions: {
-          where: { status: DistributionStatus.DELIVERED },
-          orderBy: { deliveredAt: 'desc' },
+        items: {
           include: {
-            items: {
-              include: {
-                aidCategoryItem: { include: { aidCategory: true } },
-                aidCategory: true,
-                stockItem: {
-                  include: {
-                    aidCategoryItem: { include: { aidCategory: true } },
+            aidCategory: { select: { id: true, name: true } },
+            aidCategoryItem: {
+              select: {
+                id: true,
+                name: true,
+                aidCategoryId: true,
+                aidCategory: { select: { id: true, name: true } },
+              },
+            },
+            stockItem: {
+              select: {
+                aidCategoryItem: {
+                  select: {
+                    name: true,
+                    aidCategory: { select: { id: true, name: true } },
                   },
                 },
               },
             },
-            driver: { select: { id: true, displayName: true, username: true } },
-            completedBy: { select: { id: true, displayName: true } },
           },
         },
+        driver: { select: { id: true, displayName: true, username: true } },
+        completedBy: { select: { id: true, displayName: true } },
       },
-    });
+    };
+
+    const [total, rows] = await Promise.all([
+      this.prisma.beneficiary.count({ where }),
+      this.prisma.beneficiary.findMany({
+        where,
+        orderBy,
+        skip,
+        take: limit,
+        include: {
+          distributions: historyDistInclude,
+        },
+      }),
+    ]);
 
     const filterLines = Boolean(categoryId || itemId);
 
@@ -862,17 +928,7 @@ export class BeneficiariesService {
       };
     });
 
-    mapped.sort((a, b) => {
-      const byStatus =
-        beneficiaryStatusSortRank(a.status as BeneficiaryStatus) -
-        beneficiaryStatusSortRank(b.status as BeneficiaryStatus);
-      if (byStatus !== 0) return byStatus;
-      const ad = a.lastDeliveredAt ? new Date(a.lastDeliveredAt).getTime() : 0;
-      const bd = b.lastDeliveredAt ? new Date(b.lastDeliveredAt).getTime() : 0;
-      if (bd !== ad) return bd - ad;
-      return a.fullName.localeCompare(b.fullName);
-    });
-    return mapped;
+    return buildPaginatedResult(mapped, total, page, limit);
   }
 
   private lineItemDisplayName(it: {

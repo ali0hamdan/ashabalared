@@ -9,6 +9,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { toast } from 'sonner';
 import { useTranslation } from 'react-i18next';
+import type { PaginatedResponse } from '@/lib/paginated';
 
 type Line = { stockItemId: string; quantity: number };
 
@@ -48,20 +49,35 @@ export function DistributionNewPage() {
   } | null>(null);
 
   useEffect(() => {
-    const tmr = window.setTimeout(() => setBenSearchDebounced(benSearchInput.trim()), 350);
+    const tmr = window.setTimeout(() => setBenSearchDebounced(benSearchInput.trim()), 400);
     return () => window.clearTimeout(tmr);
   }, [benSearchInput]);
 
-  const { data: beneficiaries, isLoading: benLoading, isFetching: benFetching } = useQuery({
-    queryKey: ['beneficiaries', 'dist-new', { forSelection: true, q: benSearchDebounced }],
+  const [benPage, setBenPage] = useState(1);
+  const benLimit = 20;
+
+  useEffect(() => {
+    setBenPage(1);
+  }, [benSearchDebounced]);
+
+  const { data: benPayload, isLoading: benLoading, isFetching: benFetching } = useQuery({
+    queryKey: ['beneficiaries', 'dist-new', { forSelection: true, activeOnly: true, search: benSearchDebounced, page: benPage }],
     queryFn: async () =>
       (
-        await api.get('/beneficiaries', {
-          params: { forSelection: true, q: benSearchDebounced || undefined },
+        await api.get<PaginatedResponse<Record<string, unknown>>>('/beneficiaries', {
+          params: {
+            forSelection: true,
+            activeOnly: true,
+            search: benSearchDebounced || undefined,
+            limit: benLimit,
+            page: benPage,
+          },
         })
       ).data,
+    placeholderData: (prev) => prev,
   });
-  const benRows = useMemo(() => (Array.isArray(beneficiaries) ? beneficiaries : []), [beneficiaries]);
+  const benRows = useMemo(() => benPayload?.data ?? [], [benPayload?.data]);
+  const benTotalPages = benPayload?.totalPages ?? 0;
 
   useEffect(() => {
     if (!beneficiaryId) {
@@ -223,7 +239,7 @@ export function DistributionNewPage() {
         <Card className="space-y-3 p-4">
           <CardTitle>{t('distributionNew.step1')}</CardTitle>
           <CardDescription>{t('distributionNew.step1Desc')}</CardDescription>
-          {benLoading ? (
+          {benLoading && !benPayload ? (
             <div className="text-sm text-muted-foreground">{t('common.loading')}</div>
           ) : (
             <div className="space-y-3">
@@ -287,6 +303,37 @@ export function DistributionNewPage() {
                   </ul>
                 )}
               </div>
+              {benTotalPages > 1 ? (
+                <div className="flex max-w-xl flex-wrap items-center justify-between gap-2 border-t border-border pt-2 text-xs">
+                  <span className="text-muted-foreground">
+                    {t('distributionNew.beneficiaryPagingSummary', {
+                      page: benPage,
+                      totalPages: benTotalPages,
+                      total: benPayload?.total ?? 0,
+                    })}
+                  </span>
+                  <div className="flex gap-2">
+                    <Button
+                      type="button"
+                      variant="outline"
+                      className="h-8 px-2 text-xs"
+                      disabled={benPage <= 1}
+                      onClick={() => setBenPage((p) => Math.max(1, p - 1))}
+                    >
+                      {t('distributionNew.beneficiaryPagingPrev')}
+                    </Button>
+                    <Button
+                      type="button"
+                      variant="outline"
+                      className="h-8 px-2 text-xs"
+                      disabled={benPage >= benTotalPages}
+                      onClick={() => setBenPage((p) => p + 1)}
+                    >
+                      {t('distributionNew.beneficiaryPagingNext')}
+                    </Button>
+                  </div>
+                </div>
+              ) : null}
             </div>
           )}
           <div className="flex justify-end gap-2 pt-2">

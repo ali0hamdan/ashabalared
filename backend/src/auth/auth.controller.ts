@@ -31,7 +31,8 @@ export class AuthController {
   ) {
     const result = await this.auth.login(dto, req.ip);
     this.setRefreshCookie(res, result.refreshToken);
-    const { refreshToken, ...rest } = result;
+    const { refreshToken: _refreshToken, ...rest } = result;
+    void _refreshToken;
     return rest;
   }
 
@@ -43,7 +44,8 @@ export class AuthController {
     const token = this.readRefresh(req);
     const result = await this.auth.refresh(token);
     this.setRefreshCookie(res, result.refreshToken);
-    const { refreshToken, ...rest } = result;
+    const { refreshToken: _refreshToken, ...rest } = result;
+    void _refreshToken;
     return rest;
   }
 
@@ -112,5 +114,4 @@ export class AuthController {
       sameSite: prod ? 'none' : 'lax',
     };
   }
-
 }

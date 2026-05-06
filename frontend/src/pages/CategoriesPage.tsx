@@ -45,6 +45,7 @@ type CategoryBeneficiariesPayload = {
   categoryId: string;
   categoryName: string;
   count: number;
+  truncated?: boolean;
   beneficiaries: Array<{
     id: string;
     fullName: string;
@@ -113,7 +114,10 @@ export function CategoriesPage() {
     queryFn: async () =>
       (
         await api.get<CategoryBeneficiariesPayload>(`/aid-categories/${tabParam}/beneficiaries`, {
-          params: benNeedSearchDebounced ? { q: benNeedSearchDebounced } : undefined,
+          params: {
+            ...(benNeedSearchDebounced ? { q: benNeedSearchDebounced } : {}),
+            limit: 100,
+          },
         })
       ).data,
     enabled: Boolean(!isOverview && tabParam),
