@@ -12,6 +12,7 @@ import { useTranslation } from 'react-i18next';
 import { useAuthStore } from '@/store/auth';
 import { parseDeleteBlocked, type DeleteBlockedPayload } from '@/lib/deleteBlocked';
 import { AdminForceDeletePanel } from '@/components/AdminForceDeletePanel';
+import type { UserRow } from '@/types/api-shapes';
 
 function userDeleteErrorMessage(e: unknown, fallback: string): string {
   const m = (e as { response?: { data?: { message?: string | string[] } } })?.response?.data?.message;
@@ -26,9 +27,9 @@ export function UsersPage() {
   const qc = useQueryClient();
   const { data, isLoading } = useQuery({
     queryKey: ['users'],
-    queryFn: async () => (await api.get('/users')).data,
+    queryFn: async () => (await api.get<UserRow[]>('/users')).data,
   });
-  const rows = useMemo(() => (Array.isArray(data) ? data : []), [data]);
+  const rows = useMemo((): UserRow[] => (Array.isArray(data) ? data : []), [data]);
 
   const [open, setOpen] = useState(false);
   const [username, setUsername] = useState('');
@@ -36,9 +37,9 @@ export function UsersPage() {
   const [displayName, setDisplayName] = useState('');
   const [roleCode, setRoleCode] = useState<'ADMIN' | 'DELIVERY'>('DELIVERY');
 
-  const [delUser, setDelUser] = useState<any | null>(null);
+  const [delUser, setDelUser] = useState<UserRow | null>(null);
   const [delUserLoading, setDelUserLoading] = useState(false);
-  const [forceUser, setForceUser] = useState<{ row: any; blocked: DeleteBlockedPayload; self: boolean } | null>(null);
+  const [forceUser, setForceUser] = useState<{ row: UserRow; blocked: DeleteBlockedPayload; self: boolean } | null>(null);
   const [forceUserConfirm, setForceUserConfirm] = useState('');
   const [forceUserReason, setForceUserReason] = useState('');
   const [forceUserSelfName, setForceUserSelfName] = useState('');
@@ -163,7 +164,7 @@ export function UsersPage() {
               </tr>
             </thead>
             <tbody>
-              {rows.map((u: any) => (
+              {rows.map((u) => (
                 <tr key={u.id} className="border-b border-border hover:bg-muted/20">
                   <td className="p-3 font-medium">{u.displayName}</td>
                   <td className="p-3">{u.username}</td>

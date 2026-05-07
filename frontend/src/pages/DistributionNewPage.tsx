@@ -10,6 +10,7 @@ import { useNavigate } from 'react-router-dom';
 import { toast } from 'sonner';
 import { useTranslation } from 'react-i18next';
 import type { PaginatedResponse } from '@/lib/paginated';
+import type { BeneficiaryDetailApi, BeneficiaryPickRow, CategoryLinkRow, StockRowForSelect } from '@/types/api-shapes';
 
 type Line = { stockItemId: string; quantity: number };
 
@@ -64,7 +65,7 @@ export function DistributionNewPage() {
     queryKey: ['beneficiaries', 'dist-new', { forSelection: true, activeOnly: true, search: benSearchDebounced, page: benPage }],
     queryFn: async () =>
       (
-        await api.get<PaginatedResponse<Record<string, unknown>>>('/beneficiaries', {
+        await api.get<PaginatedResponse<BeneficiaryPickRow>>('/beneficiaries', {
           params: {
             forSelection: true,
             activeOnly: true,
@@ -81,23 +82,19 @@ export function DistributionNewPage() {
 
   useEffect(() => {
     if (!beneficiaryId) {
-      setSelectedPick(null);
+      queueMicrotask(() => setSelectedPick(null));
       return;
     }
     if (selectedPick?.id === beneficiaryId) return;
-    const b = benRows.find((x: { id: string }) => x.id === beneficiaryId) as
-      | (Parameters<typeof formatBeneficiaryAddressLines>[0] & {
-          id: string;
-          fullName: string;
-          phone: string;
-        })
-      | undefined;
+    const b = benRows.find((x) => x.id === beneficiaryId);
     if (b) {
-      setSelectedPick({
-        id: b.id,
-        line1: `${b.fullName} — ${b.phone}`,
-        line2: formatBeneficiaryAddressLines(b),
-      });
+      queueMicrotask(() =>
+        setSelectedPick({
+          id: b.id,
+          line1: `${b.fullName} — ${b.phone}`,
+          line2: formatBeneficiaryAddressLines(b),
+        }),
+      );
     }
   }, [beneficiaryId, benRows, selectedPick?.id]);
 
@@ -121,13 +118,13 @@ export function DistributionNewPage() {
   const { data: stockRows, isLoading: stockLoading } = useQuery({
     queryKey: ['stock', 'dist-new'],
     enabled: step >= 2,
-    queryFn: async () => (await api.get('/stock', { params: { hasAvailable: 'true' } })).data,
+    queryFn: async () => (await api.get<StockRowForSelect[]>('/stock', { params: { hasAvailable: 'true' } })).data,
   });
-  const stocks = useMemo(() => (Array.isArray(stockRows) ? stockRows : []), [stockRows]);
+  const stocks = useMemo((): StockRowForSelect[] => (Array.isArray(stockRows) ? stockRows : []), [stockRows]);
 
   const stockOptions = useMemo(
     () =>
-      stocks.map((s: any) => ({
+      stocks.map((s) => ({
         id: s.id,
         label: `${s.aidCategoryItem?.aidCategory?.name ?? ''} — ${s.aidCategoryItem?.name ?? s.id} (${s.availableQuantity})`,
       })),
@@ -137,13 +134,13 @@ export function DistributionNewPage() {
   const { data: beneficiaryDetail, isLoading: beneficiaryDetailLoading } = useQuery({
     queryKey: ['beneficiary', beneficiaryId, 'distribution-new'],
     enabled: Boolean(beneficiaryId) && step >= 3,
-    queryFn: async () => (await api.get(`/beneficiaries/${beneficiaryId}`)).data,
+    queryFn: async () => (await api.get<BeneficiaryDetailApi>(`/beneficiaries/${beneficiaryId}`)).data,
   });
 
-  const beneficiaryNeeds = useMemo(() => {
+  const beneficiaryNeeds = useMemo((): CategoryLinkRow[] => {
     const cats = beneficiaryDetail?.categories;
     if (!Array.isArray(cats)) return [];
-    return cats.filter((bc: { quantity?: number }) => typeof bc.quantity === 'number' && bc.quantity >= 1);
+    return cats.filter((bc) => typeof bc.quantity === 'number' && bc.quantity >= 1);
   }, [beneficiaryDetail]);
 
   function prefillLinesFromNeeds() {
@@ -153,10 +150,10 @@ export function DistributionNewPage() {
     }
     const newLines: Line[] = [];
     for (const bc of beneficiaryNeeds) {
-      const catId = (bc as { categoryId?: string; category?: { id?: string } }).categoryId ?? (bc as { category?: { id?: string } }).category?.id;
-      const qty = Math.max(1, (bc as { quantity: number }).quantity);
+      const catId = bc.categoryId ?? bc.category?.id;
+      const qty = Math.max(1, typeof bc.quantity === 'number' ? bc.quantity : 1);
       const match = stocks.find(
-        (s: any) =>
+        (s) =>
           catId &&
           (s.aidCategoryItem?.aidCategoryId === catId || s.aidCategoryItem?.aidCategory?.id === catId) &&
           (s.availableQuantity ?? 0) > 0,
@@ -209,8 +206,10 @@ export function DistributionNewPage() {
       toast.success(t('distributionNew.success'));
       await qc.invalidateQueries({ queryKey: ['distributions'] });
       navigate('/app/distributions');
-    } catch (e: any) {
-      toast.error(e?.response?.data?.message ?? t('common.saveError'));
+    } catch (e: unknown) {
+      toast.error(
+        (e as { response?: { data?: { message?: string } } })?.response?.data?.message ?? t('common.saveError'),
+      );
     } finally {
       setSaving(false);
     }
@@ -280,7 +279,7 @@ export function DistributionNewPage() {
                   <div className="p-4 text-sm text-muted-foreground">{t('distributionNew.beneficiaryListEmpty')}</div>
                 ) : (
                   <ul className="divide-y divide-border">
-                    {benRows.map((b: any) => {
+                    {benRows.map((b) => {
                       const sub = formatBeneficiaryAddressLines(b);
                       return (
                         <li key={b.id}>

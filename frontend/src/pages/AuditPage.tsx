@@ -3,15 +3,16 @@ import { api } from '@/lib/api';
 import { useQuery } from '@tanstack/react-query';
 import { useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
+import type { AuditLogRow, AuditLogsPayload } from '@/types/api-shapes';
 
 export function AuditPage() {
   const { t, i18n } = useTranslation();
   const [action, setAction] = useState('');
   const { data, isLoading } = useQuery({
     queryKey: ['audit', action],
-    queryFn: async () => (await api.get('/audit-logs', { params: { action: action || undefined } })).data,
+    queryFn: async () => (await api.get<AuditLogsPayload>('/audit-logs', { params: { action: action || undefined } })).data,
   });
-  const rows = useMemo(() => (Array.isArray(data?.items) ? data.items : []), [data]);
+  const rows = useMemo((): AuditLogRow[] => (Array.isArray(data?.items) ? data.items : []), [data]);
   const dateLocale = i18n.language.startsWith('ar') ? 'ar' : 'en-US';
 
   return (
@@ -46,7 +47,7 @@ export function AuditPage() {
               </tr>
             </thead>
             <tbody>
-              {rows.map((l: any) => (
+              {rows.map((l) => (
                 <tr key={l.id} className="border-b border-border hover:bg-muted/20">
                   <td className="p-3 whitespace-nowrap">{new Date(l.createdAt).toLocaleString(dateLocale)}</td>
                   <td className="p-3 font-mono text-xs">{l.action}</td>

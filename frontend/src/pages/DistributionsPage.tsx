@@ -16,8 +16,16 @@ import { parseDeleteBlocked, parseForceDeleteForbidden, type DeleteBlockedPayloa
 import { AdminForceDeletePanel } from '@/components/AdminForceDeletePanel';
 import { cn } from '@/lib/utils';
 import type { PaginatedResponse } from '@/lib/paginated';
+import { PaginationControls } from '@/components/pagination-controls';
+import { DistributionsMobileSkeleton, DistributionsTableSkeleton } from '@/components/table-skeletons';
+import type {
+  DistributionBeneficiaryBrief,
+  DistributionLineItem,
+  DistributionListRow,
+  UserSelectOption,
+} from '@/types/api-shapes';
 
-function formatDistLine(it: any, t: TFunction) {
+function formatDistLine(it: DistributionLineItem, t: TFunction) {
   const name = it.stockItem?.aidCategoryItem?.name ?? it.aidCategory?.name ?? '';
   const qty = it.quantityPlanned ?? 0;
   const delivered = it.quantityDelivered ?? 0;
@@ -33,13 +41,13 @@ function trimMeaningfulText(raw: unknown): string {
   return s;
 }
 
-function beneficiaryAreaForDistribution(b: any): string {
+function beneficiaryAreaForDistribution(b: DistributionBeneficiaryBrief | null | undefined): string {
   const fromRegion = trimMeaningfulText(b?.region?.nameAr);
   if (fromRegion) return fromRegion;
   return trimMeaningfulText(b?.area);
 }
 
-function beneficiaryStreetForDistribution(b: any): string {
+function beneficiaryStreetForDistribution(b: DistributionBeneficiaryBrief | null | undefined): string {
   const line =
     b?.addressLine !== undefined && b?.addressLine !== null ? b.addressLine : b?.street;
   return trimMeaningfulText(line);
@@ -50,7 +58,7 @@ function DistributionBeneficiaryAddress({
   t,
   dash,
 }: {
-  b: any;
+  b: DistributionBeneficiaryBrief | null | undefined;
   t: TFunction;
   dash: string;
 }) {
@@ -115,11 +123,11 @@ export function DistributionsPage() {
     setPage(1);
   }, [status, searchDebounced]);
 
-  const { data, isLoading, isPlaceholderData } = useQuery({
+  const { data, isPending, isFetching, isPlaceholderData } = useQuery({
     queryKey: ['distributions', status, searchDebounced, page, pageSize],
     queryFn: async () =>
       (
-        await api.get<PaginatedResponse<Record<string, unknown>>>('/distributions', {
+        await api.get<PaginatedResponse<DistributionListRow>>('/distributions', {
           params: {
             status: status || undefined,
             search: searchDebounced || undefined,
@@ -130,6 +138,7 @@ export function DistributionsPage() {
       ).data,
     placeholderData: (prev) => prev,
   });
+  const showInitialSkeleton = isPending && !isPlaceholderData;
   const rows = useMemo(() => data?.data ?? [], [data?.data]);
   const totalPages = data?.totalPages ?? 0;
 
@@ -156,7 +165,10 @@ export function DistributionsPage() {
         })
       ).data,
   });
-  const deliveryUsers = useMemo(() => (Array.isArray(deliveryUsersRaw) ? deliveryUsersRaw : []), [deliveryUsersRaw]);
+  const deliveryUsers = useMemo(
+    (): UserSelectOption[] => (Array.isArray(deliveryUsersRaw) ? deliveryUsersRaw : []),
+    [deliveryUsersRaw],
+  );
 
   async function confirmDelivery() {
     if (!deliverId) return;
@@ -169,8 +181,10 @@ export function DistributionsPage() {
       await qc.invalidateQueries({ queryKey: ['dashboard-summary'] });
       await qc.invalidateQueries({ queryKey: ['stock'] });
       await qc.invalidateQueries({ queryKey: ['beneficiaries-history'] });
-    } catch (e: any) {
-      toast.error(e?.response?.data?.message ?? t('distributions.deliverError'));
+    } catch (e: unknown) {
+      toast.error(
+        (e as { response?: { data?: { message?: string } } })?.response?.data?.message ?? t('distributions.deliverError'),
+      );
     }
   }
 
@@ -183,8 +197,10 @@ export function DistributionsPage() {
       setAssignDriverId('');
       await qc.invalidateQueries({ queryKey: ['distributions'] });
       await qc.invalidateQueries({ queryKey: ['dashboard-summary'] });
-    } catch (e: any) {
-      toast.error(e?.response?.data?.message ?? t('distributions.assignDriverError'));
+    } catch (e: unknown) {
+      toast.error(
+        (e as { response?: { data?: { message?: string } } })?.response?.data?.message ?? t('distributions.assignDriverError'),
+      );
     }
   }
 
@@ -195,8 +211,10 @@ export function DistributionsPage() {
       toast.success(t('distributions.cancelSuccess'));
       setCancelId(null);
       await qc.invalidateQueries({ queryKey: ['distributions'] });
-    } catch (e: any) {
-      toast.error(e?.response?.data?.message ?? t('common.updateError'));
+    } catch (e: unknown) {
+      toast.error(
+        (e as { response?: { data?: { message?: string } } })?.response?.data?.message ?? t('common.updateError'),
+      );
     }
   }
 
@@ -293,9 +311,19 @@ export function DistributionsPage() {
         </div>
       </div>
 
-      <Card className={cn('max-w-full overflow-x-auto p-0', isPlaceholderData && 'opacity-90')}>
-        {isLoading && !data ? (
-          <div className="p-6 text-sm text-muted-foreground">{t('common.loading')}</div>
+      <Card
+        className={cn(
+          'max-w-full overflow-x-auto p-0',
+          isPlaceholderData && isFetching && 'opacity-[0.92] transition-opacity',
+        )}
+      >
+        {showInitialSkeleton ? (
+          <div aria-busy={true} aria-label={t('common.loading')}>
+            <div className="hidden md:block">
+              <DistributionsTableSkeleton rows={8} />
+            </div>
+            <DistributionsMobileSkeleton cards={4} />
+          </div>
         ) : rows.length === 0 ? (
           <div className="p-10 text-center text-sm text-muted-foreground">{t('distributions.noResults')}</div>
         ) : (
@@ -316,7 +344,7 @@ export function DistributionsPage() {
                   </tr>
                 </thead>
                 <tbody>
-                  {rows.map((d: any) => (
+                  {rows.map((d) => (
                     <tr key={d.id} className="border-b border-border align-top hover:bg-muted/20">
                       <td className="p-3 font-medium">{d.beneficiary?.fullName ?? t('common.dash')}</td>
                       <td className="p-3 align-top">
@@ -335,7 +363,7 @@ export function DistributionsPage() {
                       </td>
                       <td className="p-3">
                         <ul className="space-y-1">
-                          {(d.items ?? []).map((it: any) => (
+                          {(d.items ?? []).map((it) => (
                             <li key={it.id}>{formatDistLine(it, t)}</li>
                           ))}
                         </ul>
@@ -395,7 +423,7 @@ export function DistributionsPage() {
             </div>
 
             <div className="md:hidden space-y-3 p-3">
-              {rows.map((d: any) => (
+              {rows.map((d) => (
                 <div key={d.id} className="space-y-3 rounded-lg border border-border bg-card p-4 text-sm">
                   <div className="flex flex-wrap items-start justify-between gap-2">
                     <div className="min-w-0 font-semibold">{d.beneficiary?.fullName ?? t('common.dash')}</div>
@@ -433,7 +461,7 @@ export function DistributionsPage() {
                   <div>
                     <div className="text-xs text-muted-foreground">{t('distributions.colLines')}</div>
                     <ul className="mt-1 space-y-1">
-                      {(d.items ?? []).map((it: any) => (
+                      {(d.items ?? []).map((it) => (
                         <li key={it.id}>{formatDistLine(it, t)}</li>
                       ))}
                     </ul>
@@ -489,36 +517,21 @@ export function DistributionsPage() {
                 </div>
               ))}
             </div>
-            {totalPages > 1 ? (
-              <div className="flex flex-wrap items-center justify-between gap-2 border-t border-border px-3 py-2.5 text-sm">
-                <span className="text-muted-foreground">
-                  {t('distributions.pagingSummary', {
-                    page,
-                    totalPages,
-                    total: data?.total ?? 0,
-                  })}
-                </span>
-                <div className="flex gap-2">
-                  <Button
-                    type="button"
-                    variant="outline"
-                    className="h-8 px-3 text-xs"
-                    disabled={page <= 1}
-                    onClick={() => setPage((p) => Math.max(1, p - 1))}
-                  >
-                    {t('distributions.pagingPrev')}
-                  </Button>
-                  <Button
-                    type="button"
-                    variant="outline"
-                    className="h-8 px-3 text-xs"
-                    disabled={page >= totalPages}
-                    onClick={() => setPage((p) => p + 1)}
-                  >
-                    {t('distributions.pagingNext')}
-                  </Button>
-                </div>
-              </div>
+            {data && totalPages > 1 ? (
+              <PaginationControls
+                page={page}
+                totalPages={totalPages}
+                isFetching={isFetching && !showInitialSkeleton}
+                summary={t('distributions.pagingSummary', {
+                  page,
+                  totalPages,
+                  total: data.total ?? 0,
+                })}
+                prevLabel={t('distributions.pagingPrev')}
+                nextLabel={t('distributions.pagingNext')}
+                onPrev={() => setPage((p) => Math.max(1, p - 1))}
+                onNext={() => setPage((p) => p + 1)}
+              />
             ) : null}
           </>
         )}
@@ -580,7 +593,7 @@ export function DistributionsPage() {
             onChange={(e) => setAssignDriverId(e.target.value)}
           >
             <option value="">{t('common.dash')}</option>
-            {deliveryUsers.map((u: any) => (
+            {deliveryUsers.map((u) => (
               <option key={u.id} value={u.id}>
                 {u.displayName} ({u.username})
               </option>

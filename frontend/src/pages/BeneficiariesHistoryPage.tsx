@@ -9,6 +9,9 @@ import { useQuery } from '@tanstack/react-query';
 import { useEffect, useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { ChevronDown, ChevronRight } from 'lucide-react';
+import { PaginationControls } from '@/components/pagination-controls';
+import { BeneficiariesHistorySkeleton } from '@/components/table-skeletons';
+import { cn } from '@/lib/utils';
 
 type HistoryLine = { itemName: string; quantity: number };
 type HistoryDelivery = {
@@ -56,6 +59,7 @@ export function BeneficiariesHistoryPage() {
   const historyPageSize = 20;
 
   useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- reset pagination when filters change
     setHistoryPage(1);
   }, [qDebounced, aidCategoryId, aidCategoryItemId]);
 
@@ -78,6 +82,7 @@ export function BeneficiariesHistoryPage() {
 
   useEffect(() => {
     if (!aidCategoryId) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect -- clear item when category cleared
       setAidCategoryItemId('');
       return;
     }
@@ -86,7 +91,7 @@ export function BeneficiariesHistoryPage() {
     }
   }, [aidCategoryId, aidCategoryItemId, itemOpts]);
 
-  const { data: historyPayload, isLoading, isPlaceholderData } = useQuery({
+  const { data: historyPayload, isPending, isFetching, isPlaceholderData } = useQuery({
     queryKey: ['beneficiaries-history', qDebounced, aidCategoryId, aidCategoryItemId, historyPage, historyPageSize],
     queryFn: async () =>
       (
@@ -103,6 +108,7 @@ export function BeneficiariesHistoryPage() {
     placeholderData: (prev) => prev,
   });
 
+  const showInitialSkeleton = isPending && !isPlaceholderData;
   const rows = useMemo(() => historyPayload?.data ?? [], [historyPayload?.data]);
   const historyTotalPages = historyPayload?.totalPages ?? 0;
 
@@ -193,15 +199,22 @@ export function BeneficiariesHistoryPage() {
         ) : null}
       </Card>
 
-      {isLoading && !historyPayload ? (
-        <div className="text-sm text-muted-foreground">{t('common.loading')}</div>
+      {showInitialSkeleton ? (
+        <div aria-busy={true} aria-label={t('common.loading')}>
+          <BeneficiariesHistorySkeleton cards={5} />
+        </div>
       ) : rows.length === 0 ? (
         <Card className="p-8 text-center text-sm text-muted-foreground">
           {!hasActiveFilters ? t('beneficiariesHistory.emptyDb') : t('beneficiariesHistory.empty')}
         </Card>
       ) : (
         <>
-          <ul className={isPlaceholderData ? 'space-y-3 opacity-90' : 'space-y-3'}>
+          <ul
+            className={cn(
+              'space-y-3',
+              isPlaceholderData && isFetching && 'opacity-[0.92] transition-opacity',
+            )}
+          >
           {rows.map((b) => {
             const expanded = Boolean(open[b.id]);
             return (
@@ -296,36 +309,22 @@ export function BeneficiariesHistoryPage() {
             );
           })}
         </ul>
-          {historyTotalPages > 1 ? (
-            <div className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-border bg-card px-3 py-2.5 text-sm">
-              <span className="text-muted-foreground">
-                {t('beneficiariesHistory.pagingSummary', {
-                  page: historyPage,
-                  totalPages: historyTotalPages,
-                  total: historyPayload?.total ?? 0,
-                })}
-              </span>
-              <div className="flex gap-2">
-                <Button
-                  type="button"
-                  variant="outline"
-                  className="h-8 px-3 text-xs"
-                  disabled={historyPage <= 1}
-                  onClick={() => setHistoryPage((p) => Math.max(1, p - 1))}
-                >
-                  {t('beneficiariesHistory.pagingPrev')}
-                </Button>
-                <Button
-                  type="button"
-                  variant="outline"
-                  className="h-8 px-3 text-xs"
-                  disabled={historyPage >= historyTotalPages}
-                  onClick={() => setHistoryPage((p) => p + 1)}
-                >
-                  {t('beneficiariesHistory.pagingNext')}
-                </Button>
-              </div>
-            </div>
+          {historyPayload && historyTotalPages > 1 ? (
+            <PaginationControls
+              className="rounded-lg border border-border bg-card"
+              page={historyPage}
+              totalPages={historyTotalPages}
+              isFetching={isFetching && !showInitialSkeleton}
+              summary={t('beneficiariesHistory.pagingSummary', {
+                page: historyPage,
+                totalPages: historyTotalPages,
+                total: historyPayload.total ?? 0,
+              })}
+              prevLabel={t('beneficiariesHistory.pagingPrev')}
+              nextLabel={t('beneficiariesHistory.pagingNext')}
+              onPrev={() => setHistoryPage((p) => Math.max(1, p - 1))}
+              onNext={() => setHistoryPage((p) => p + 1)}
+            />
           ) : null}
         </>
       )}

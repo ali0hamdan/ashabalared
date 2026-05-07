@@ -14,12 +14,26 @@ import { useTranslation } from 'react-i18next';
 import { useAuthStore } from '@/store/auth';
 import { parseDeleteBlocked, type DeleteBlockedPayload } from '@/lib/deleteBlocked';
 import { AdminForceDeletePanel } from '@/components/AdminForceDeletePanel';
+import { PaginationControls } from '@/components/pagination-controls';
+import { BeneficiariesTableSkeleton } from '@/components/table-skeletons';
 
 /** Labels for table chips: catalog items (needed) first, else legacy category names. */
-function beneficiaryNeedChipLabels(b: {
+type BeneficiaryNeedChipSource = {
   itemNeeds?: Array<{ needed?: boolean; quantity?: number; aidCategoryItem?: { name?: string | null } | null }>;
   categories?: Array<{ quantity?: number; category?: { name?: string | null } | null }>;
-}): string[] {
+};
+
+type BeneficiaryListRow = BeneficiaryNeedChipSource & {
+  id: string;
+  fullName?: string | null;
+  phone?: string | null;
+  area?: string | null;
+  status?: string;
+  familyCount?: number;
+  _count?: { distributions?: number };
+};
+
+function beneficiaryNeedChipLabels(b: BeneficiaryNeedChipSource): string[] {
   const items = (b.itemNeeds ?? []).filter((n) => n.needed && (n.quantity ?? 0) >= 1);
   const fromItems = [...new Set(items.map((n) => n.aidCategoryItem?.name).filter((x): x is string => Boolean(x?.trim())))].sort((a, c) =>
     a.localeCompare(c),
@@ -63,11 +77,11 @@ export function BeneficiariesPage() {
   const [forceBenReason, setForceBenReason] = useState('');
   const [forceBenPending, setForceBenPending] = useState(false);
 
-  const { data, isLoading, isPlaceholderData, refetch } = useQuery({
+  const { data, isPending, isFetching, isPlaceholderData, refetch } = useQuery({
     queryKey: ['beneficiaries', searchDebounced, page, pageSize],
     queryFn: async () =>
       (
-        await api.get<PaginatedResponse<Record<string, unknown>>>('/beneficiaries', {
+        await api.get<PaginatedResponse<BeneficiaryListRow>>('/beneficiaries', {
           params: {
             search: searchDebounced || undefined,
             page,
@@ -78,7 +92,9 @@ export function BeneficiariesPage() {
     placeholderData: (prev) => prev,
   });
 
-  const rows = useMemo(() => data?.data ?? [], [data?.data]);
+  /** First paint with no cached or placeholder rows — show skeleton, not empty state */
+  const showInitialSkeleton = isPending && !isPlaceholderData;
+  const rows = useMemo((): BeneficiaryListRow[] => data?.data ?? [], [data?.data]);
   const total = data?.total ?? 0;
   const totalPages = data?.totalPages ?? 0;
 
@@ -188,10 +204,15 @@ export function BeneficiariesPage() {
       </Card>
 
       <Card
-        className={cn('max-w-full overflow-x-auto p-0', isPlaceholderData && 'opacity-90')}
+        className={cn(
+          'max-w-full overflow-x-auto p-0',
+          isPlaceholderData && isFetching && 'opacity-[0.92] transition-opacity',
+        )}
       >
-        {isLoading && !data ? (
-          <div className="p-6 text-sm text-muted-foreground">{t('common.loading')}</div>
+        {showInitialSkeleton ? (
+          <div className="p-0" aria-busy={true} aria-label={t('common.loading')}>
+            <BeneficiariesTableSkeleton rows={10} />
+          </div>
         ) : rows.length === 0 ? (
           <div className="p-10 text-center text-sm text-muted-foreground">{t('common.noResults')}</div>
         ) : (
@@ -235,7 +256,7 @@ export function BeneficiariesPage() {
               </tr>
             </thead>
             <tbody>
-              {rows.map((b: any) => (
+              {rows.map((b) => (
                 <tr
                   key={b.id}
                   className={cn(
@@ -303,36 +324,21 @@ export function BeneficiariesPage() {
             </tbody>
           </table>
         )}
-        {totalPages > 1 ? (
-          <div className="flex flex-wrap items-center justify-between gap-2 border-t border-border px-3 py-2.5 text-sm">
-            <span className="text-muted-foreground">
-              {t('beneficiaries.pagingSummary', {
-                page,
-                totalPages,
-                total,
-              })}
-            </span>
-            <div className="flex gap-2">
-              <Button
-                type="button"
-                variant="outline"
-                className="h-8 px-3 text-xs"
-                disabled={page <= 1}
-                onClick={() => setPage((p) => Math.max(1, p - 1))}
-              >
-                {t('beneficiaries.pagingPrev')}
-              </Button>
-              <Button
-                type="button"
-                variant="outline"
-                className="h-8 px-3 text-xs"
-                disabled={page >= totalPages}
-                onClick={() => setPage((p) => p + 1)}
-              >
-                {t('beneficiaries.pagingNext')}
-              </Button>
-            </div>
-          </div>
+        {data && totalPages > 1 ? (
+          <PaginationControls
+            page={page}
+            totalPages={totalPages}
+            isFetching={isFetching && !showInitialSkeleton}
+            summary={t('beneficiaries.pagingSummary', {
+              page,
+              totalPages,
+              total,
+            })}
+            prevLabel={t('beneficiaries.pagingPrev')}
+            nextLabel={t('beneficiaries.pagingNext')}
+            onPrev={() => setPage((p) => Math.max(1, p - 1))}
+            onNext={() => setPage((p) => p + 1)}
+          />
         ) : null}
       </Card>
 

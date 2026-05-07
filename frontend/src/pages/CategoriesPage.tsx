@@ -13,6 +13,11 @@ import { Link, useSearchParams } from 'react-router-dom';
 import { toast } from 'sonner';
 import { useTranslation } from 'react-i18next';
 import { parseDeleteBlockedBody, type DeleteBlockedPayload } from '@/lib/deleteBlocked';
+import { Skeleton } from '@/components/ui/skeleton';
+import {
+  CategoryBeneficiariesMobileSkeleton,
+  CategoryBeneficiariesTableSkeleton,
+} from '@/components/table-skeletons';
 
 function formatDeleteBlockedMessage(blocked: DeleteBlockedPayload): string {
   const rel = blocked.blockingRelations?.filter(Boolean).join(', ');
@@ -121,7 +126,11 @@ export function CategoriesPage() {
         })
       ).data,
     enabled: Boolean(!isOverview && tabParam),
+    placeholderData: (previousData) => previousData,
   });
+
+  const beneficiariesNeedingInitialSkeleton =
+    beneficiariesNeedingQuery.isPending && !beneficiariesNeedingQuery.isPlaceholderData;
 
   const saveCategory = useMutation({
     mutationFn: async (): Promise<{ kind: 'add'; id: string } | { kind: 'edit'; id: string } | undefined> => {
@@ -449,11 +458,13 @@ export function CategoriesPage() {
                 <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
                   <h2 className="text-base font-semibold">
                     {t('categories.beneficiariesNeedingTitle')}
-                    <span className="ms-1 font-normal text-muted-foreground">
+                    <span className="ms-1 inline-flex items-center gap-1 font-normal text-muted-foreground">
                       (
-                      {beneficiariesNeedingQuery.isLoading && !beneficiariesNeedingQuery.data
-                        ? '…'
-                        : (beneficiariesNeedingQuery.data?.count ?? 0)}
+                      {beneficiariesNeedingInitialSkeleton ? (
+                        <Skeleton className="inline-block h-4 w-8" aria-hidden />
+                      ) : (
+                        (beneficiariesNeedingQuery.data?.count ?? 0)
+                      )}
                       )
                     </span>
                   </h2>
@@ -468,17 +479,26 @@ export function CategoriesPage() {
 
                 {beneficiariesNeedingQuery.isError ? (
                   <p className="text-sm text-destructive">{apiErrorMessage(beneficiariesNeedingQuery.error, t('common.updateError'))}</p>
-                ) : beneficiariesNeedingQuery.isLoading && !beneficiariesNeedingQuery.data ? (
-                  <p className="text-sm text-muted-foreground">{t('common.loading')}</p>
+                ) : beneficiariesNeedingInitialSkeleton ? (
+                  <div className="space-y-3" aria-busy={true} aria-label={t('common.loading')}>
+                    <div className="hidden overflow-x-auto rounded-lg border border-border md:block">
+                      <CategoryBeneficiariesTableSkeleton rows={8} />
+                    </div>
+                    <CategoryBeneficiariesMobileSkeleton cards={4} />
+                  </div>
                 ) : (beneficiariesNeedingQuery.data?.beneficiaries.length ?? 0) === 0 ? (
                   <p className="text-sm text-muted-foreground">
                     {benNeedSearchDebounced ? t('categories.beneficiariesNeedingNoMatches') : t('categories.beneficiariesNeedingEmpty')}
                   </p>
                 ) : (
-                  <div className="space-y-3">
-                    {beneficiariesNeedingQuery.isFetching ? (
-                      <p className="text-xs text-muted-foreground">{t('common.loading')}</p>
-                    ) : null}
+                  <div
+                    className={cn(
+                      'space-y-3',
+                      beneficiariesNeedingQuery.isPlaceholderData &&
+                        beneficiariesNeedingQuery.isFetching &&
+                        'opacity-[0.92] transition-opacity',
+                    )}
+                  >
                     <div className="hidden overflow-x-auto rounded-lg border border-border md:block">
                       <table className="w-full min-w-[640px] text-left text-sm">
                         <thead className="border-b border-border bg-muted/40">

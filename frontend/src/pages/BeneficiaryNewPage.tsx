@@ -8,12 +8,13 @@ import {
   buildItemNeedsPayload,
   normalizeAidCategoriesForForm,
   validateItemQtyInCheckedCategories,
+  type ItemFieldRowState,
 } from '@/lib/beneficiaryItemNeeds';
 import { BENEFICIARY_AREA_VALUES, isAllowedBeneficiaryArea } from '@/lib/beneficiaryAreas';
 import { BENEFICIARY_LIFECYCLE, type BeneficiaryLifecycle } from '@/lib/beneficiaryLifecycleStatus';
 import { api } from '@/lib/api';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState, type SetStateAction } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { toast } from 'sonner';
 import { useTranslation } from 'react-i18next';
@@ -34,30 +35,47 @@ export function BeneficiaryNewPage() {
   const [householdSize, setHouseholdSize] = useState('1');
   const [canCook, setCanCook] = useState(false);
   const [recordStatus, setRecordStatus] = useState<BeneficiaryLifecycle>(BENEFICIARY_LIFECYCLE.ACTIVE);
-  const [categoryChecked, setCategoryChecked] = useState<Record<string, boolean>>({});
-  const [itemFields, setItemFields] = useState<Record<string, { notes: string; qty: string }>>({});
+  const [needsBundle, setNeedsBundle] = useState<{
+    categoryChecked: Record<string, boolean>;
+    itemFields: Record<string, ItemFieldRowState>;
+  }>({ categoryChecked: {}, itemFields: {} });
   const [saving, setSaving] = useState(false);
 
   const catRows = useMemo(() => normalizeAidCategoriesForForm(categories), [categories]);
 
   useEffect(() => {
-    setCategoryChecked((prev) => {
-      const next = { ...prev };
+    setNeedsBundle((prev) => {
+      const categoryChecked = { ...prev.categoryChecked };
+      const itemFields = { ...prev.itemFields };
       for (const c of catRows) {
-        if (!(c.id in next)) next[c.id] = false;
-      }
-      return next;
-    });
-    setItemFields((prev) => {
-      const next = { ...prev };
-      for (const c of catRows) {
+        if (!(c.id in categoryChecked)) categoryChecked[c.id] = false;
         for (const it of c.items) {
-          if (!(it.id in next)) next[it.id] = { notes: '', qty: '' };
+          if (!(it.id in itemFields)) itemFields[it.id] = { notes: '', qty: '' };
         }
       }
-      return next;
+      return { categoryChecked, itemFields };
     });
   }, [catRows]);
+
+  const setCategoryChecked = useCallback(
+    (u: SetStateAction<Record<string, boolean>>) => {
+      setNeedsBundle((s) => ({
+        ...s,
+        categoryChecked: typeof u === 'function' ? u(s.categoryChecked) : u,
+      }));
+    },
+    [],
+  );
+
+  const setItemFields = useCallback(
+    (u: SetStateAction<Record<string, ItemFieldRowState>>) => {
+      setNeedsBundle((s) => ({
+        ...s,
+        itemFields: typeof u === 'function' ? u(s.itemFields) : u,
+      }));
+    },
+    [],
+  );
 
   const hasAnyCatalogItems = useMemo(() => catRows.some((c) => c.items.length > 0), [catRows]);
 
@@ -80,7 +98,7 @@ export function BeneficiaryNewPage() {
       toast.error(t('beneficiaryNew.validationHousehold'));
       return false;
     }
-    const qtyCheck = validateItemQtyInCheckedCategories(catRows, categoryChecked, itemFields);
+    const qtyCheck = validateItemQtyInCheckedCategories(catRows, needsBundle.categoryChecked, needsBundle.itemFields);
     if (qtyCheck.ok === false) {
       toast.error(t('beneficiaryNew.validationItemNeedQty', { name: qtyCheck.itemName, category: qtyCheck.categoryName }));
       return false;
@@ -91,8 +109,8 @@ export function BeneficiaryNewPage() {
   async function submit() {
     if (!validate()) return;
     const familyCount = parseInt(householdSize, 10);
-    const itemNeeds = buildItemNeedsPayload(catRows, categoryChecked, itemFields);
-    const categoryNeeds = buildCategoryNeedsPayload(catRows, categoryChecked);
+    const itemNeeds = buildItemNeedsPayload(catRows, needsBundle.categoryChecked, needsBundle.itemFields);
+    const categoryNeeds = buildCategoryNeedsPayload(catRows, needsBundle.categoryChecked);
 
     const phoneTrim = phone.trim();
     const payload: Record<string, unknown> = {
@@ -124,8 +142,10 @@ export function BeneficiaryNewPage() {
       await qc.invalidateQueries({ queryKey: ['aid-category-beneficiaries'] });
       toast.success(t('beneficiaryNew.createSuccess'));
       navigate(`/app/beneficiaries/${data.id}`);
-    } catch (e: any) {
-      toast.error(e?.response?.data?.message ?? t('common.saveError'));
+    } catch (e: unknown) {
+      toast.error(
+        (e as { response?: { data?: { message?: string } } })?.response?.data?.message ?? t('common.saveError'),
+      );
     } finally {
       setSaving(false);
     }
@@ -223,9 +243,9 @@ export function BeneficiaryNewPage() {
           hasAnyCatalogItems={hasAnyCatalogItems}
           canCook={canCook}
           onCanCookChange={setCanCook}
-          categoryChecked={categoryChecked}
+          categoryChecked={needsBundle.categoryChecked}
           setCategoryChecked={setCategoryChecked}
-          itemFields={itemFields}
+          itemFields={needsBundle.itemFields}
           setItemFields={setItemFields}
         />
       </Card>

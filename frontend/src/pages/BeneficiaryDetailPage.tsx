@@ -7,6 +7,8 @@ import {
   hydrateNeedsFormFromItemNeeds,
   normalizeAidCategoriesForForm,
   validateItemQtyInCheckedCategories,
+  type AidCatalogCategory,
+  type ItemFieldRowState,
 } from '@/lib/beneficiaryItemNeeds';
 import { api } from '@/lib/api';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
@@ -26,6 +28,71 @@ import {
   type BeneficiaryLifecycle,
   normalizeBeneficiaryLifecycle,
 } from '@/lib/beneficiaryLifecycleStatus';
+import type {
+  BeneficiaryDetailApi,
+  BeneficiaryDistributionDetail,
+  DistributionLineItem,
+  TimelineEventEntry,
+} from '@/types/api-shapes';
+
+type EditDraft = {
+  fullName: string;
+  phone: string;
+  area: string;
+  street: string;
+  recordStatus: BeneficiaryLifecycle;
+  householdSize: string;
+  canCook: boolean;
+  categoryChecked: Record<string, boolean>;
+  itemFields: Record<string, ItemFieldRowState>;
+};
+
+function buildEditDraft(data: BeneficiaryDetailApi, catRows: AidCatalogCategory[]): EditDraft {
+  type HydrateNeed = {
+    aidCategoryItemId: string;
+    needed?: boolean;
+    quantity?: number;
+    notes?: string | null;
+  };
+  const rawNeeds: HydrateNeed[] = (data.itemNeeds ?? [])
+    .filter((r) => typeof r.aidCategoryItemId === 'string')
+    .map((r) => ({
+      aidCategoryItemId: r.aidCategoryItemId as string,
+      needed: r.needed,
+      quantity: r.quantity,
+      notes: r.notes,
+    }));
+  const beneficiaryCategories = (data.categories ?? []) as Parameters<
+    typeof hydrateNeedsFormFromItemNeeds
+  >[2];
+  const h = hydrateNeedsFormFromItemNeeds(catRows, rawNeeds, beneficiaryCategories);
+  const categoryChecked = { ...h.categoryChecked };
+  const itemFields = { ...h.itemFields };
+  for (const c of catRows) {
+    if (!(c.id in categoryChecked)) categoryChecked[c.id] = false;
+    for (const it of c.items) {
+      if (!(it.id in itemFields)) itemFields[it.id] = { notes: '', qty: '' };
+    }
+  }
+  const streetRaw =
+    typeof data.street === 'string' ? data.street : typeof data.addressLine === 'string' ? data.addressLine : '';
+  return {
+    fullName: data.fullName ?? '',
+    phone: data.phone ?? '',
+    area: data.area ?? '',
+    street: typeof streetRaw === 'string' ? streetRaw : '',
+    recordStatus: normalizeBeneficiaryLifecycle(data.status),
+    householdSize: String(data.familyCount ?? 1),
+    canCook: Boolean(data.cookingStove),
+    categoryChecked,
+    itemFields,
+  };
+}
+
+function axiosMessage(e: unknown): string | undefined {
+  const m = (e as { response?: { data?: { message?: string } } })?.response?.data?.message;
+  return typeof m === 'string' ? m : undefined;
+}
 
 export function BeneficiaryDetailPage() {
   const { t, i18n } = useTranslation();
@@ -37,7 +104,7 @@ export function BeneficiaryDetailPage() {
   const { data, isLoading, isError } = useQuery({
     queryKey: ['beneficiary', id],
     enabled: Boolean(id),
-    queryFn: async () => (await api.get(`/beneficiaries/${id}`)).data,
+    queryFn: async () => (await api.get<BeneficiaryDetailApi>(`/beneficiaries/${id}`)).data,
   });
 
   const { data: categories } = useQuery({
@@ -47,15 +114,7 @@ export function BeneficiaryDetailPage() {
   });
 
   const [editing, setEditing] = useState(false);
-  const [fullName, setFullName] = useState('');
-  const [phone, setPhone] = useState('');
-  const [area, setArea] = useState('');
-  const [street, setStreet] = useState('');
-  const [recordStatus, setRecordStatus] = useState<BeneficiaryLifecycle>(BENEFICIARY_LIFECYCLE.ACTIVE);
-  const [householdSize, setHouseholdSize] = useState('1');
-  const [canCook, setCanCook] = useState(false);
-  const [categoryChecked, setCategoryChecked] = useState<Record<string, boolean>>({});
-  const [itemFields, setItemFields] = useState<Record<string, { notes: string; qty: string }>>({});
+  const [editDraft, setEditDraft] = useState<EditDraft | null>(null);
   const [showNotNeeded, setShowNotNeeded] = useState(false);
 
   const catRows = useMemo(() => normalizeAidCategoriesForForm(categories), [categories]);
@@ -69,58 +128,26 @@ export function BeneficiaryDetailPage() {
 
   const streetDisplay = useMemo(() => {
     if (!data) return '';
-    const row = data as { street?: string | null; addressLine?: string | null };
-    const raw = typeof row.street === 'string' ? row.street : row.addressLine;
+    const raw = typeof data.street === 'string' ? data.street : data.addressLine;
     return typeof raw === 'string' ? raw.trim() : '';
   }, [data]);
 
   useEffect(() => {
     if (!editing || !data || categories === undefined) return;
-    const rows = normalizeAidCategoriesForForm(categories);
-    setFullName(data.fullName ?? '');
-    setPhone(data.phone ?? '');
-    setArea(data.area ?? '');
-    const row = data as { street?: string | null; addressLine?: string | null };
-    setStreet(typeof row.street === 'string' ? row.street : typeof row.addressLine === 'string' ? row.addressLine : '');
-    setRecordStatus(normalizeBeneficiaryLifecycle(data.status));
-    setHouseholdSize(String(data.familyCount ?? 1));
-    setCanCook(Boolean(data.cookingStove));
-    const rawNeeds = (data.itemNeeds ?? []) as Array<{
-      aidCategoryItemId: string;
-      needed?: boolean;
-      quantity?: number;
-      notes?: string | null;
-    }>;
-    const beneficiaryCategories = (data.categories ?? []) as Array<{
-      categoryId?: string;
-      category?: { id: string };
-      quantity?: number;
-      notes?: string | null;
-    }>;
-    const h = hydrateNeedsFormFromItemNeeds(rows, rawNeeds, beneficiaryCategories);
-    setCategoryChecked(h.categoryChecked);
-    setItemFields(h.itemFields);
-  }, [editing, data, categories]);
+    queueMicrotask(() => setEditDraft(buildEditDraft(data, catRows)));
+  }, [data, categories, catRows, editing]);
 
-  useEffect(() => {
-    if (!editing) return;
-    setCategoryChecked((prev) => {
-      const next = { ...prev };
-      for (const c of catRows) {
-        if (!(c.id in next)) next[c.id] = false;
-      }
-      return next;
-    });
-    setItemFields((prev) => {
-      const next = { ...prev };
-      for (const c of catRows) {
-        for (const it of c.items) {
-          if (!(it.id in next)) next[it.id] = { notes: '', qty: '' };
-        }
-      }
-      return next;
-    });
-  }, [catRows, editing]);
+  function handleEditToggle() {
+    if (editing) {
+      setEditing(false);
+      setEditDraft(null);
+      return;
+    }
+    if (data && categories !== undefined) {
+      setEditDraft(buildEditDraft(data, catRows));
+    }
+    setEditing(true);
+  }
 
   const updateMutation = useMutation({
     mutationFn: async (body: Record<string, unknown>) => api.patch(`/beneficiaries/${id}`, body),
@@ -130,41 +157,37 @@ export function BeneficiaryDetailPage() {
       await qc.invalidateQueries({ queryKey: ['beneficiaries-history'] });
       await qc.invalidateQueries({ queryKey: ['aid-category-beneficiaries'] });
       setEditing(false);
+      setEditDraft(null);
       toast.success(t('beneficiaryDetail.updateSuccess'));
     },
-    onError: (e: any) => {
-      toast.error(e?.response?.data?.message ?? t('common.saveError'));
+    onError: (e: unknown) => {
+      toast.error(axiosMessage(e) ?? t('common.saveError'));
     },
   });
 
   const neededByCategory = useMemo(() => {
-    const groups = (data?.itemNeedsByCategory ?? []) as Array<{ category: { id: string; name: string }; needs: any[] }>;
+    const groups = data?.itemNeedsByCategory ?? [];
     return groups
       .map((g) => ({
         category: g.category,
-        needs: (g.needs ?? []).filter((n: { needed?: boolean }) => n.needed),
+        needs: (g.needs ?? []).filter((n) => n.needed),
       }))
       .filter((g) => g.needs.length > 0);
   }, [data]);
 
-  const notNeededItems = useMemo(
-    () => ((data?.itemNeeds ?? []) as any[]).filter((r) => r.needed === false),
-    [data],
-  );
+  const notNeededItems = useMemo(() => (data?.itemNeeds ?? []).filter((r) => r.needed === false), [data]);
 
   /** Category-level rows only when no “needed” catalog items are shown for that category (avoid duplicate headings). */
   const categoriesWithNeededItems = useMemo(() => {
-    const groups = (data?.itemNeedsByCategory ?? []) as Array<{ category: { id: string }; needs: any[] }>;
+    const groups = data?.itemNeedsByCategory ?? [];
     return new Set(
-      groups
-        .filter((g) => (g.needs ?? []).some((n: { needed?: boolean }) => n.needed))
-        .map((g) => g.category.id),
+      groups.filter((g) => (g.needs ?? []).some((n) => n.needed)).map((g) => g.category.id),
     );
   }, [data]);
 
   const legacyCategoryRows = useMemo(() => {
-    const all = (data?.categories ?? []) as any[];
-    return all.filter((n) => !categoriesWithNeededItems.has(n.category?.id));
+    const all = data?.categories ?? [];
+    return all.filter((n) => !categoriesWithNeededItems.has(n.category?.id ?? ''));
   }, [data, categoriesWithNeededItems]);
 
   const dateLocale = i18n.language.startsWith('ar') ? 'ar' : 'en-US';
@@ -173,33 +196,34 @@ export function BeneficiaryDetailPage() {
   if (isError) return <div className="text-sm text-muted-foreground">{t('common.saveError')}</div>;
   if (isLoading || !data) return <div className="text-sm text-muted-foreground">{t('common.loading')}</div>;
 
-  const deliveredCount = (data.distributions ?? []).filter((d: { status: string }) => d.status === 'DELIVERED').length;
+  const deliveredCount = (data.distributions ?? []).filter((d) => d.status === 'DELIVERED').length;
 
   function validateEdit(): boolean {
-    if (!fullName.trim()) {
+    if (!editDraft) return false;
+    if (!editDraft.fullName.trim()) {
       toast.error(t('beneficiaryNew.validationFullName'));
       return false;
     }
-    const phoneTrim = phone.trim();
+    const phoneTrim = editDraft.phone.trim();
     if (phoneTrim.length > 0 && phoneTrim.length < 3) {
       toast.error(t('beneficiaryNew.validationPhoneMin'));
       return false;
     }
-    if (!area.trim()) {
+    if (!editDraft.area.trim()) {
       toast.error(t('beneficiaryNew.validationArea'));
       return false;
     }
-    const areaTrim = area.trim();
+    const areaTrim = editDraft.area.trim();
     if (!isAllowedBeneficiaryArea(areaTrim) && areaTrim !== (data.area ?? '').trim()) {
       toast.error(t('beneficiaryNew.validationAreaInvalid'));
       return false;
     }
-    const n = parseInt(householdSize, 10);
+    const n = parseInt(editDraft.householdSize, 10);
     if (!Number.isFinite(n) || n < 1) {
       toast.error(t('beneficiaryNew.validationHousehold'));
       return false;
     }
-    const qtyCheck = validateItemQtyInCheckedCategories(catRows, categoryChecked, itemFields);
+    const qtyCheck = validateItemQtyInCheckedCategories(catRows, editDraft.categoryChecked, editDraft.itemFields);
     if (qtyCheck.ok === false) {
       toast.error(t('beneficiaryNew.validationItemNeedQty', { name: qtyCheck.itemName, category: qtyCheck.categoryName }));
       return false;
@@ -208,29 +232,28 @@ export function BeneficiaryDetailPage() {
   }
 
   function saveEdit() {
-    if (!validateEdit()) return;
-    const familyCount = parseInt(householdSize, 10);
-    const itemNeeds = buildItemNeedsPayload(catRows, categoryChecked, itemFields);
-    const beneficiaryCategories = (data.categories ?? []) as Array<{
-      categoryId?: string;
-      category?: { id: string };
-      quantity?: number;
-      notes?: string | null;
-    }>;
-    const categoryNeeds = buildCategoryNeedsPayload(catRows, categoryChecked, beneficiaryCategories);
+    if (!editDraft || !validateEdit()) return;
+    const familyCount = parseInt(editDraft.householdSize, 10);
+    const itemNeeds = buildItemNeedsPayload(catRows, editDraft.categoryChecked, editDraft.itemFields);
+    const beneficiaryCategories = data.categories ?? [];
+    const categoryNeeds = buildCategoryNeedsPayload(
+      catRows,
+      editDraft.categoryChecked,
+      beneficiaryCategories as Parameters<typeof buildCategoryNeedsPayload>[2],
+    );
     const body: Record<string, unknown> = {
-      fullName: fullName.trim(),
-      area: area.trim(),
-      street: street.trim(),
+      fullName: editDraft.fullName.trim(),
+      area: editDraft.area.trim(),
+      street: editDraft.street.trim(),
       familyCount,
       regionId: null,
       district: null,
-      cookingStove: canCook,
+      cookingStove: editDraft.canCook,
       itemNeeds,
       categoryNeeds,
-      status: recordStatus,
+      status: editDraft.recordStatus,
     };
-    const phoneTrim = phone.trim();
+    const phoneTrim = editDraft.phone.trim();
     if (phoneTrim.length >= 3) {
       body.phone = phoneTrim;
     }
@@ -249,7 +272,7 @@ export function BeneficiaryDetailPage() {
         </div>
         <div className="flex flex-wrap gap-2">
           {canEdit ? (
-            <Button type="button" variant="outline" onClick={() => (editing ? setEditing(false) : setEditing(true))}>
+            <Button type="button" variant="outline" onClick={() => handleEditToggle()}>
               {editing ? t('common.cancel') : t('common.edit')}
             </Button>
           ) : null}
@@ -260,96 +283,137 @@ export function BeneficiaryDetailPage() {
       </div>
 
       {editing ? (
-        <Card className="space-y-4 p-4 sm:p-6">
-          <CardTitle>{t('beneficiaryDetail.editTitle')}</CardTitle>
-          <CardDescription>{t('beneficiaryDetail.editDesc')}</CardDescription>
-          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-            <div className="space-y-2 sm:col-span-2">
-              <Label>{t('beneficiaryNew.fullName')}</Label>
-              <Input value={fullName} onChange={(e) => setFullName(e.target.value)} />
-            </div>
-            <div className="space-y-2">
-              <Label>{t('beneficiaryNew.phone')}</Label>
-              <p className="text-xs text-muted-foreground">{t('beneficiaryNew.phoneOptionalHint')}</p>
-              <Input value={phone} onChange={(e) => setPhone(e.target.value)} autoComplete="tel" />
-            </div>
-            <div className="space-y-2">
-              <Label>{t('beneficiaryNew.householdSize')}</Label>
-              <Input type="number" min={1} value={householdSize} onChange={(e) => setHouseholdSize(e.target.value)} />
-            </div>
-            <div className="space-y-2 sm:col-span-2">
-              <Label>{t('beneficiaryNew.recordStatus')}</Label>
-              <p className="text-xs text-muted-foreground">{t('beneficiaryNew.recordStatusHint')}</p>
-              <div className="flex flex-wrap gap-2 rounded-md border border-border bg-muted/30 p-1">
-                <Button
-                  type="button"
-                  variant={recordStatus === BENEFICIARY_LIFECYCLE.ACTIVE ? 'primary' : 'outline'}
-                  className="h-9 flex-1 sm:flex-initial sm:min-w-[7rem]"
-                  onClick={() => setRecordStatus(BENEFICIARY_LIFECYCLE.ACTIVE)}
+        !editDraft ? (
+          <Card className="space-y-4 p-4 sm:p-6">
+            <div className="text-sm text-muted-foreground">{t('common.loading')}</div>
+          </Card>
+        ) : (
+          <Card className="space-y-4 p-4 sm:p-6">
+            <CardTitle>{t('beneficiaryDetail.editTitle')}</CardTitle>
+            <CardDescription>{t('beneficiaryDetail.editDesc')}</CardDescription>
+            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+              <div className="space-y-2 sm:col-span-2">
+                <Label>{t('beneficiaryNew.fullName')}</Label>
+                <Input
+                  value={editDraft.fullName}
+                  onChange={(e) => setEditDraft((d) => (d ? { ...d, fullName: e.target.value } : d))}
+                />
+              </div>
+              <div className="space-y-2">
+                <Label>{t('beneficiaryNew.phone')}</Label>
+                <p className="text-xs text-muted-foreground">{t('beneficiaryNew.phoneOptionalHint')}</p>
+                <Input
+                  value={editDraft.phone}
+                  onChange={(e) => setEditDraft((d) => (d ? { ...d, phone: e.target.value } : d))}
+                  autoComplete="tel"
+                />
+              </div>
+              <div className="space-y-2">
+                <Label>{t('beneficiaryNew.householdSize')}</Label>
+                <Input
+                  type="number"
+                  min={1}
+                  value={editDraft.householdSize}
+                  onChange={(e) => setEditDraft((d) => (d ? { ...d, householdSize: e.target.value } : d))}
+                />
+              </div>
+              <div className="space-y-2 sm:col-span-2">
+                <Label>{t('beneficiaryNew.recordStatus')}</Label>
+                <p className="text-xs text-muted-foreground">{t('beneficiaryNew.recordStatusHint')}</p>
+                <div className="flex flex-wrap gap-2 rounded-md border border-border bg-muted/30 p-1">
+                  <Button
+                    type="button"
+                    variant={editDraft.recordStatus === BENEFICIARY_LIFECYCLE.ACTIVE ? 'primary' : 'outline'}
+                    className="h-9 flex-1 sm:flex-initial sm:min-w-[7rem]"
+                    onClick={() =>
+                      setEditDraft((d) => (d ? { ...d, recordStatus: BENEFICIARY_LIFECYCLE.ACTIVE } : d))
+                    }
+                  >
+                    {t('beneficiaryNew.statusActive')}
+                  </Button>
+                  <Button
+                    type="button"
+                    variant={editDraft.recordStatus === BENEFICIARY_LIFECYCLE.INACTIVE ? 'primary' : 'outline'}
+                    className="h-9 flex-1 sm:flex-initial sm:min-w-[7rem]"
+                    onClick={() =>
+                      setEditDraft((d) => (d ? { ...d, recordStatus: BENEFICIARY_LIFECYCLE.INACTIVE } : d))
+                    }
+                  >
+                    {t('beneficiaryNew.statusInactive')}
+                  </Button>
+                </div>
+              </div>
+              <div className="space-y-2 sm:col-span-2">
+                <Label>{t('beneficiaryNew.area')}</Label>
+                <select
+                  className="h-10 w-full rounded-md border border-border bg-card px-3 text-sm"
+                  value={editDraft.area}
+                  onChange={(e) => setEditDraft((d) => (d ? { ...d, area: e.target.value } : d))}
                 >
-                  {t('beneficiaryNew.statusActive')}
-                </Button>
-                <Button
-                  type="button"
-                  variant={recordStatus === BENEFICIARY_LIFECYCLE.INACTIVE ? 'primary' : 'outline'}
-                  className="h-9 flex-1 sm:flex-initial sm:min-w-[7rem]"
-                  onClick={() => setRecordStatus(BENEFICIARY_LIFECYCLE.INACTIVE)}
-                >
-                  {t('beneficiaryNew.statusInactive')}
-                </Button>
+                  <option value="">{t('beneficiaryNew.areaPlaceholder')}</option>
+                  {areaSelectOptions.map((a) => (
+                    <option key={a} value={a}>
+                      {a}
+                    </option>
+                  ))}
+                </select>
+              </div>
+              <div className="space-y-2 sm:col-span-2">
+                <Label>{t('beneficiaryNew.street')}</Label>
+                <p className="text-xs text-muted-foreground">{t('beneficiaryNew.streetHint')}</p>
+                <Input
+                  value={editDraft.street}
+                  onChange={(e) => setEditDraft((d) => (d ? { ...d, street: e.target.value } : d))}
+                  autoComplete="street-address"
+                  placeholder={t('beneficiaryNew.streetPlaceholder')}
+                />
               </div>
             </div>
-            <div className="space-y-2 sm:col-span-2">
-              <Label>{t('beneficiaryNew.area')}</Label>
-              <select
-                className="h-10 w-full rounded-md border border-border bg-card px-3 text-sm"
-                value={area}
-                onChange={(e) => setArea(e.target.value)}
-              >
-                <option value="">{t('beneficiaryNew.areaPlaceholder')}</option>
-                {areaSelectOptions.map((a) => (
-                  <option key={a} value={a}>
-                    {a}
-                  </option>
-                ))}
-              </select>
-            </div>
-            <div className="space-y-2 sm:col-span-2">
-              <Label>{t('beneficiaryNew.street')}</Label>
-              <p className="text-xs text-muted-foreground">{t('beneficiaryNew.streetHint')}</p>
-              <Input
-                value={street}
-                onChange={(e) => setStreet(e.target.value)}
-                autoComplete="street-address"
-                placeholder={t('beneficiaryNew.streetPlaceholder')}
+            <div className="space-y-3 border-t border-border pt-4">
+              <div className="font-medium">{t('beneficiaryNew.needsTitle')}</div>
+              <p className="text-sm text-muted-foreground">{t('beneficiaryNew.needsDescItems')}</p>
+              <BeneficiaryItemNeedsFields
+                t={t}
+                catLoading={categories === undefined}
+                catRows={catRows}
+                hasAnyCatalogItems={catRows.some((c) => c.items.length > 0)}
+                canCook={editDraft.canCook}
+                onCanCookChange={(v) => setEditDraft((d) => (d ? { ...d, canCook: v } : d))}
+                categoryChecked={editDraft.categoryChecked}
+                setCategoryChecked={(u) =>
+                  setEditDraft((d) => {
+                    if (!d) return d;
+                    const next = typeof u === 'function' ? u(d.categoryChecked) : u;
+                    return { ...d, categoryChecked: next };
+                  })
+                }
+                itemFields={editDraft.itemFields}
+                setItemFields={(u) =>
+                  setEditDraft((d) => {
+                    if (!d) return d;
+                    const next = typeof u === 'function' ? u(d.itemFields) : u;
+                    return { ...d, itemFields: next };
+                  })
+                }
               />
             </div>
-          </div>
-          <div className="space-y-3 border-t border-border pt-4">
-            <div className="font-medium">{t('beneficiaryNew.needsTitle')}</div>
-            <p className="text-sm text-muted-foreground">{t('beneficiaryNew.needsDescItems')}</p>
-            <BeneficiaryItemNeedsFields
-              t={t}
-              catLoading={categories === undefined}
-              catRows={catRows}
-              hasAnyCatalogItems={catRows.some((c) => c.items.length > 0)}
-              canCook={canCook}
-              onCanCookChange={setCanCook}
-              categoryChecked={categoryChecked}
-              setCategoryChecked={setCategoryChecked}
-              itemFields={itemFields}
-              setItemFields={setItemFields}
-            />
-          </div>
-          <div className="flex justify-end gap-2">
-            <Button type="button" variant="outline" onClick={() => setEditing(false)}>
-              {t('common.cancel')}
-            </Button>
-            <Button type="button" disabled={updateMutation.isPending} onClick={() => saveEdit()}>
-              {updateMutation.isPending ? t('common.saving') : t('common.save')}
-            </Button>
-          </div>
-        </Card>
+            <div className="flex justify-end gap-2">
+              <Button
+                type="button"
+                variant="outline"
+                onClick={() => {
+                  setEditing(false);
+                  setEditDraft(null);
+                }}
+              >
+                {t('common.cancel')}
+              </Button>
+              <Button type="button" disabled={updateMutation.isPending} onClick={() => saveEdit()}>
+                {updateMutation.isPending ? t('common.saving') : t('common.save')}
+              </Button>
+            </div>
+          </Card>
+        )
       ) : (
         <div className="grid gap-3 lg:grid-cols-3">
           <Card className="lg:col-span-2">
@@ -522,7 +586,7 @@ export function BeneficiaryDetailPage() {
               </tr>
             </thead>
             <tbody>
-              {(data.distributions ?? []).map((d: any) => (
+              {(data.distributions ?? []).map((d: BeneficiaryDistributionDetail) => (
                 <tr key={d.id} className="border-b border-border align-top">
                   <td className="p-2">
                     <DistributionStatusBadge status={d.status} />
@@ -534,7 +598,7 @@ export function BeneficiaryDetailPage() {
                   </td>
                   <td className="p-2">
                     <ul className="space-y-1">
-                      {(d.items ?? []).map((it: any) => {
+                      {(d.items ?? []).map((it: DistributionLineItem) => {
                         const name = it.stockItem?.aidCategoryItem?.name ?? it.aidCategory?.name ?? '';
                         const qty = it.quantityPlanned ?? 0;
                         const delivered = it.quantityDelivered ?? 0;
@@ -560,7 +624,7 @@ export function BeneficiaryDetailPage() {
         <CardTitle>{t('beneficiaryDetail.timelineTitle')}</CardTitle>
         <CardDescription className="mt-2">{t('beneficiaryDetail.timelineDesc')}</CardDescription>
         <ol className="mt-4 space-y-3 border-s-2 border-border ps-4">
-          {(data.timelineEvents ?? []).map((ev: any) => (
+          {(data.timelineEvents ?? []).map((ev: TimelineEventEntry) => (
             <li key={ev.id} className="relative">
               <div className="absolute -start-[21px] top-1 h-3 w-3 rounded-full bg-primary" />
               <div className="text-sm font-medium">{ev.titleAr}</div>

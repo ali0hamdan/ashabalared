@@ -12,6 +12,14 @@ import { Badge } from '@/components/ui/badge';
 import { useTranslation } from 'react-i18next';
 import { parseDeleteBlocked, type DeleteBlockedPayload } from '@/lib/deleteBlocked';
 import { AdminForceDeletePanel } from '@/components/AdminForceDeletePanel';
+import type { AidCategoryOption, StockItemNested } from '@/types/api-shapes';
+
+type StockTableRow = StockItemNested;
+
+function axiosMessage(e: unknown): string | undefined {
+  const m = (e as { response?: { data?: { message?: string } } })?.response?.data?.message;
+  return typeof m === 'string' ? m : undefined;
+}
 
 export function StockPage() {
   const { t } = useTranslation();
@@ -24,15 +32,15 @@ export function StockPage() {
 
   const { data: categories } = useQuery({
     queryKey: ['categories'],
-    queryFn: async () => (await api.get('/aid-categories')).data,
+    queryFn: async () => (await api.get<AidCategoryOption[]>('/aid-categories')).data,
   });
-  const catOpts = useMemo(() => (Array.isArray(categories) ? categories : []), [categories]);
+  const catOpts = useMemo((): AidCategoryOption[] => (Array.isArray(categories) ? categories : []), [categories]);
 
   const { data, isLoading } = useQuery({
     queryKey: ['stock', lowOnly, hasAvailable, categoryId, q],
     queryFn: async () =>
       (
-        await api.get('/stock', {
+        await api.get<StockTableRow[]>('/stock', {
           params: {
             lowOnly: lowOnly ? 'true' : undefined,
             hasAvailable: hasAvailable ? 'true' : undefined,
@@ -42,13 +50,13 @@ export function StockPage() {
         })
       ).data,
   });
-  const rows = useMemo(() => (Array.isArray(data) ? data : []), [data]);
+  const rows = useMemo((): StockTableRow[] => (Array.isArray(data) ? data : []), [data]);
 
   const [dlg, setDlg] = useState<{ id: string; label: string } | null>(null);
   const [delta, setDelta] = useState(0);
   const [note, setNote] = useState('');
 
-  const [editDlg, setEditDlg] = useState<any | null>(null);
+  const [editDlg, setEditDlg] = useState<StockTableRow | null>(null);
   const [onHand, setOnHand] = useState(0);
   const [threshold, setThreshold] = useState(0);
   const [supplier, setSupplier] = useState('');
@@ -58,8 +66,8 @@ export function StockPage() {
   const [addQty, setAddQty] = useState(0);
   const [addThreshold, setAddThreshold] = useState(10);
 
-  const [delStock, setDelStock] = useState<any | null>(null);
-  const [forceStock, setForceStock] = useState<{ row: any; blocked: DeleteBlockedPayload } | null>(null);
+  const [delStock, setDelStock] = useState<StockTableRow | null>(null);
+  const [forceStock, setForceStock] = useState<{ row: StockTableRow; blocked: DeleteBlockedPayload } | null>(null);
   const [forceConfirm, setForceConfirm] = useState('');
   const [forceReason, setForceReason] = useState('');
   const [forcePending, setForcePending] = useState(false);
@@ -84,7 +92,7 @@ export function StockPage() {
     try {
       await api.patch(`/stock/${editDlg.id}`, {
         quantityOnHand: onHand,
-        quantityReserved: editDlg.quantityReserved,
+        quantityReserved: editDlg.quantityReserved ?? 0,
         lowStockThreshold: threshold,
         supplier: supplier || null,
       });
@@ -92,8 +100,8 @@ export function StockPage() {
       setEditDlg(null);
       await qc.invalidateQueries({ queryKey: ['stock'] });
       await qc.invalidateQueries({ queryKey: ['dashboard-summary'] });
-    } catch (e: any) {
-      toast.error(e?.response?.data?.message ?? t('common.updateError'));
+    } catch (e: unknown) {
+      toast.error(axiosMessage(e) ?? t('common.updateError'));
     }
   }
 
@@ -110,8 +118,8 @@ export function StockPage() {
       setAddItemId('');
       await qc.invalidateQueries({ queryKey: ['stock'] });
       await qc.invalidateQueries({ queryKey: ['dashboard-summary'] });
-    } catch (e: any) {
-      toast.error(e?.response?.data?.message ?? t('common.createError'));
+    } catch (e: unknown) {
+      toast.error(axiosMessage(e) ?? t('common.createError'));
     }
   }
 
@@ -167,7 +175,11 @@ export function StockPage() {
   }
 
   const itemsMissingStock = useMemo(() => {
-    const have = new Set(rows.map((r: any) => r.aidCategoryItemId));
+    const have = new Set<string>();
+    for (const r of rows) {
+      const id = r.aidCategoryItemId ?? r.aidCategoryItem?.id;
+      if (typeof id === 'string' && id) have.add(id);
+    }
     const out: { id: string; label: string }[] = [];
     for (const c of catOpts) {
       for (const it of c.items ?? []) {
@@ -177,15 +189,20 @@ export function StockPage() {
     return out;
   }, [catOpts, rows]);
 
-  function openEdit(s: any) {
+  function openEdit(s: StockTableRow) {
     setEditDlg(s);
-    setOnHand(s.quantityOnHand);
-    setThreshold(s.lowStockThreshold);
+    setOnHand(s.quantityOnHand ?? 0);
+    setThreshold(s.lowStockThreshold ?? s.threshold ?? 0);
     setSupplier(s.supplier ?? '');
   }
 
-  const itemLabel = (s: any) => s.aidCategoryItem?.name ?? '—';
-  const catLabel = (s: any) => s.aidCategoryItem?.aidCategory?.name ?? '—';
+  function itemLabel(s: StockTableRow | null | undefined) {
+    return s?.aidCategoryItem?.name ?? '—';
+  }
+
+  function catLabel(s: StockTableRow | null | undefined) {
+    return s?.aidCategoryItem?.aidCategory?.name ?? '—';
+  }
 
   return (
     <div className="space-y-4">
@@ -211,7 +228,7 @@ export function StockPage() {
               onChange={(e) => setCategoryId(e.target.value)}
             >
               <option value="">{t('distributions.filterAll')}</option>
-              {catOpts.map((c: any) => (
+              {catOpts.map((c) => (
                 <option key={c.id} value={c.id}>
                   {c.name}
                 </option>
@@ -250,7 +267,7 @@ export function StockPage() {
               </tr>
             </thead>
             <tbody>
-              {rows.map((s: any) => (
+              {rows.map((s) => (
                 <tr key={s.id} className="border-b border-border hover:bg-muted/20">
                   <td className="p-3 font-medium">{itemLabel(s)}</td>
                   <td className="p-3">{catLabel(s)}</td>

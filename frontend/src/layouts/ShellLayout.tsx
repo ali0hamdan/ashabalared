@@ -60,9 +60,9 @@ export function ShellLayout() {
   const items = getNavItems().filter((n) => user && n.roles.includes(user.roleCode));
 
   useEffect(() => {
-    if (window.matchMedia('(max-width: 767px)').matches) {
-      setSidebarOpen(false);
-    }
+    if (!window.matchMedia('(max-width: 767px)').matches) return;
+    // Defer closing so this is not synchronous setState inside the effect body (react-hooks/set-state-in-effect).
+    queueMicrotask(() => setSidebarOpen(false));
   }, [location.pathname]);
 
   useEffect(() => {
