@@ -6,6 +6,8 @@ import {
   buildItemNeedsPayload,
   hydrateNeedsFormFromItemNeeds,
   normalizeAidCategoriesForForm,
+  sanitizeDigitsOnly,
+  validateCategoryQtyInCheckedCategories,
   validateItemQtyInCheckedCategories,
   type AidCatalogCategory,
   type ItemFieldRowState,
@@ -23,6 +25,11 @@ import { useTranslation } from 'react-i18next';
 import { ChevronDown } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { BENEFICIARY_AREA_VALUES, isAllowedBeneficiaryArea } from '@/lib/beneficiaryAreas';
+import {
+  isOptionalLebaneseLocalPhoneValid,
+  phoneFromStoredBeneficiary,
+  sanitizeLebaneseLocalPhoneInput,
+} from '@/lib/lebanesePhone';
 import {
   BENEFICIARY_LIFECYCLE,
   type BeneficiaryLifecycle,
@@ -44,6 +51,7 @@ type EditDraft = {
   householdSize: string;
   canCook: boolean;
   categoryChecked: Record<string, boolean>;
+  categoryQtyFields: Record<string, string>;
   itemFields: Record<string, ItemFieldRowState>;
 };
 
@@ -67,9 +75,11 @@ function buildEditDraft(data: BeneficiaryDetailApi, catRows: AidCatalogCategory[
   >[2];
   const h = hydrateNeedsFormFromItemNeeds(catRows, rawNeeds, beneficiaryCategories);
   const categoryChecked = { ...h.categoryChecked };
+  const categoryQtyFields = { ...h.categoryQtyFields };
   const itemFields = { ...h.itemFields };
   for (const c of catRows) {
     if (!(c.id in categoryChecked)) categoryChecked[c.id] = false;
+    if (!(c.id in categoryQtyFields)) categoryQtyFields[c.id] = '';
     for (const it of c.items) {
       if (!(it.id in itemFields)) itemFields[it.id] = { notes: '', qty: '' };
     }
@@ -78,13 +88,14 @@ function buildEditDraft(data: BeneficiaryDetailApi, catRows: AidCatalogCategory[
     typeof data.street === 'string' ? data.street : typeof data.addressLine === 'string' ? data.addressLine : '';
   return {
     fullName: data.fullName ?? '',
-    phone: data.phone ?? '',
+    phone: phoneFromStoredBeneficiary(data.phone),
     area: data.area ?? '',
     street: typeof streetRaw === 'string' ? streetRaw : '',
     recordStatus: normalizeBeneficiaryLifecycle(data.status),
     householdSize: String(data.familyCount ?? 1),
     canCook: Boolean(data.cookingStove),
     categoryChecked,
+    categoryQtyFields,
     itemFields,
   };
 }
@@ -204,9 +215,8 @@ export function BeneficiaryDetailPage() {
       toast.error(t('beneficiaryNew.validationFullName'));
       return false;
     }
-    const phoneTrim = editDraft.phone.trim();
-    if (phoneTrim.length > 0 && phoneTrim.length < 3) {
-      toast.error(t('beneficiaryNew.validationPhoneMin'));
+    if (!isOptionalLebaneseLocalPhoneValid(editDraft.phone)) {
+      toast.error(t('beneficiaryNew.validationPhoneFormat'));
       return false;
     }
     if (!editDraft.area.trim()) {
@@ -228,6 +238,15 @@ export function BeneficiaryDetailPage() {
       toast.error(t('beneficiaryNew.validationItemNeedQty', { name: qtyCheck.itemName, category: qtyCheck.categoryName }));
       return false;
     }
+    const catQtyCheck = validateCategoryQtyInCheckedCategories(
+      catRows,
+      editDraft.categoryChecked,
+      editDraft.categoryQtyFields,
+    );
+    if (catQtyCheck.ok === false) {
+      toast.error(t('beneficiaryNew.validationCategoryQty', { name: catQtyCheck.categoryName }));
+      return false;
+    }
     return true;
   }
 
@@ -239,7 +258,8 @@ export function BeneficiaryDetailPage() {
     const categoryNeeds = buildCategoryNeedsPayload(
       catRows,
       editDraft.categoryChecked,
-      beneficiaryCategories as Parameters<typeof buildCategoryNeedsPayload>[2],
+      editDraft.categoryQtyFields,
+      beneficiaryCategories as Parameters<typeof buildCategoryNeedsPayload>[3],
     );
     const body: Record<string, unknown> = {
       fullName: editDraft.fullName.trim(),
@@ -253,10 +273,7 @@ export function BeneficiaryDetailPage() {
       categoryNeeds,
       status: editDraft.recordStatus,
     };
-    const phoneTrim = editDraft.phone.trim();
-    if (phoneTrim.length >= 3) {
-      body.phone = phoneTrim;
-    }
+    body.phone = editDraft.phone.trim().length === 8 ? editDraft.phone.trim() : '';
     updateMutation.mutate(body);
   }
 
@@ -299,23 +316,43 @@ export function BeneficiaryDetailPage() {
                   onChange={(e) => setEditDraft((d) => (d ? { ...d, fullName: e.target.value } : d))}
                 />
               </div>
-              <div className="space-y-2">
-                <Label>{t('beneficiaryNew.phone')}</Label>
-                <p className="text-xs text-muted-foreground">{t('beneficiaryNew.phoneOptionalHint')}</p>
-                <Input
-                  value={editDraft.phone}
-                  onChange={(e) => setEditDraft((d) => (d ? { ...d, phone: e.target.value } : d))}
-                  autoComplete="tel"
-                />
-              </div>
-              <div className="space-y-2">
-                <Label>{t('beneficiaryNew.householdSize')}</Label>
-                <Input
-                  type="number"
-                  min={1}
-                  value={editDraft.householdSize}
-                  onChange={(e) => setEditDraft((d) => (d ? { ...d, householdSize: e.target.value } : d))}
-                />
+              <div className="grid grid-cols-1 gap-4 sm:col-span-2 sm:grid-cols-2">
+                <div className="min-w-0 space-y-2">
+                  <Label>{t('beneficiaryNew.phone')}</Label>
+                  <p className="text-xs text-muted-foreground">{t('beneficiaryNew.phoneOptionalHint')}</p>
+                  <Input
+                    type="text"
+                    inputMode="numeric"
+                    autoComplete="tel"
+                    maxLength={8}
+                    className="w-full tabular-nums"
+                    placeholder="12345678"
+                    value={editDraft.phone}
+                    onChange={(e) =>
+                      setEditDraft((d) =>
+                        d ? { ...d, phone: sanitizeLebaneseLocalPhoneInput(e.target.value) } : d,
+                      )
+                    }
+                  />
+                </div>
+                <div className="min-w-0 space-y-2">
+                  <Label>{t('beneficiaryNew.householdSize')}</Label>
+                  <p className="text-xs text-muted-foreground invisible select-none" aria-hidden="true">
+                    {t('beneficiaryNew.phoneOptionalHint')}
+                  </p>
+                  <Input
+                    type="text"
+                    inputMode="numeric"
+                    autoComplete="off"
+                    className="w-full tabular-nums"
+                    value={editDraft.householdSize}
+                    onChange={(e) =>
+                      setEditDraft((d) =>
+                        d ? { ...d, householdSize: sanitizeDigitsOnly(e.target.value) } : d,
+                      )
+                    }
+                  />
+                </div>
               </div>
               <div className="space-y-2 sm:col-span-2">
                 <Label>{t('beneficiaryNew.recordStatus')}</Label>
@@ -385,6 +422,14 @@ export function BeneficiaryDetailPage() {
                     if (!d) return d;
                     const next = typeof u === 'function' ? u(d.categoryChecked) : u;
                     return { ...d, categoryChecked: next };
+                  })
+                }
+                categoryQtyFields={editDraft.categoryQtyFields}
+                setCategoryQtyFields={(u) =>
+                  setEditDraft((d) => {
+                    if (!d) return d;
+                    const next = typeof u === 'function' ? u(d.categoryQtyFields) : u;
+                    return { ...d, categoryQtyFields: next };
                   })
                 }
                 itemFields={editDraft.itemFields}

@@ -16,6 +16,11 @@ export type AidCatalogCategory = {
   items: AidCatalogItem[];
 };
 
+/** Integer quantities only: strips non-digits (empty allowed). */
+export function sanitizeDigitsOnly(raw: string): string {
+  return raw.replace(/\D/g, '');
+}
+
 /** Per-item notes/qty only (category on/off is separate). */
 export type ItemFieldRowState = { notes: string; qty: string };
 
@@ -62,10 +67,15 @@ export function hydrateNeedsFormFromItemNeeds(
   catRows: AidCatalogCategory[],
   itemNeeds: Array<{ aidCategoryItemId: string; needed?: boolean; quantity?: number; notes?: string | null }>,
   beneficiaryCategories?: Array<{ categoryId?: string; category?: { id: string }; quantity?: number; notes?: string | null }>,
-): { categoryChecked: Record<string, boolean>; itemFields: Record<string, ItemFieldRowState> } {
+): {
+  categoryChecked: Record<string, boolean>;
+  itemFields: Record<string, ItemFieldRowState>;
+  categoryQtyFields: Record<string, string>;
+} {
   const byItem = new Map(itemNeeds.map((r) => [r.aidCategoryItemId, r]));
   const categoryChecked: Record<string, boolean> = {};
   const itemFields: Record<string, ItemFieldRowState> = {};
+  const categoryQtyFields: Record<string, string> = {};
 
   for (const c of catRows) {
     let anyNeededInCat = false;
@@ -85,8 +95,15 @@ export function hydrateNeedsFormFromItemNeeds(
     }
     const legacy = beneficiaryCategories?.find((bc) => bc.category?.id === c.id || bc.categoryId === c.id);
     categoryChecked[c.id] = anyNeededInCat || Boolean(legacy);
+
+    let catQtyStr = '';
+    if (legacy && typeof legacy.quantity === 'number' && Number.isFinite(legacy.quantity)) {
+      const q = Math.max(0, Math.floor(legacy.quantity));
+      if (q >= 1) catQtyStr = String(q);
+    }
+    categoryQtyFields[c.id] = catQtyStr;
   }
-  return { categoryChecked, itemFields };
+  return { categoryChecked, itemFields, categoryQtyFields };
 }
 
 /**
@@ -120,25 +137,24 @@ export function buildItemNeedsPayload(
 }
 
 /**
- * Build `categoryNeeds` for API from category checkboxes.
- * When editing, pass previous `beneficiary.categories` rows to preserve quantity/notes for unchanged selections.
+ * Build `categoryNeeds` for API from category checkboxes and optional category-level quantities.
+ * When editing, pass previous `beneficiary.categories` rows to preserve notes when the UI does not edit them.
  */
 export function buildCategoryNeedsPayload(
   catRows: AidCatalogCategory[],
   categoryChecked: Record<string, boolean>,
+  categoryQtyFields: Record<string, string>,
   previous?: Array<{ categoryId?: string; category?: { id: string }; quantity?: number; notes?: string | null }>,
 ): CategoryNeedPayload[] {
   const out: CategoryNeedPayload[] = [];
   for (const c of catRows) {
     if (!categoryChecked[c.id]) continue;
+    const raw = (categoryQtyFields[c.id] ?? '').trim();
+    const parsed = raw === '' ? 0 : parseInt(raw, 10);
+    const quantity = Number.isFinite(parsed) ? Math.max(0, Math.floor(parsed)) : 0;
     const pid = previous?.find((x) => x.category?.id === c.id || x.categoryId === c.id);
-    if (pid) {
-      const q = typeof pid.quantity === 'number' && Number.isFinite(pid.quantity) ? Math.max(0, Math.floor(pid.quantity)) : 0;
-      const n = typeof pid.notes === 'string' ? pid.notes.trim() : '';
-      out.push({ categoryId: c.id, quantity: q, notes: n.length ? n : null });
-    } else {
-      out.push({ categoryId: c.id, quantity: 0, notes: null });
-    }
+    const n = typeof pid?.notes === 'string' ? pid.notes.trim() : '';
+    out.push({ categoryId: c.id, quantity, notes: n.length ? n : null });
   }
   return out;
 }
@@ -158,6 +174,24 @@ export function validateItemQtyInCheckedCategories(
       if (!Number.isFinite(q) || q < 0) {
         return { ok: false, itemName: it.name, categoryName: c.name } as const;
       }
+    }
+  }
+  return { ok: true } as const;
+}
+
+/** Invalid non-empty category quantity strings inside checked categories. */
+export function validateCategoryQtyInCheckedCategories(
+  catRows: AidCatalogCategory[],
+  categoryChecked: Record<string, boolean>,
+  categoryQtyFields: Record<string, string>,
+): { readonly ok: true } | { readonly ok: false; readonly categoryName: string } {
+  for (const c of catRows) {
+    if (!categoryChecked[c.id]) continue;
+    const raw = (categoryQtyFields[c.id] ?? '').trim();
+    if (raw === '') continue;
+    const q = parseInt(raw, 10);
+    if (!Number.isFinite(q) || q < 0) {
+      return { ok: false, categoryName: c.name } as const;
     }
   }
   return { ok: true } as const;

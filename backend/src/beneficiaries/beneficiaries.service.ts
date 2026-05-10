@@ -16,6 +16,7 @@ import type { AuthUser } from '../common/decorators/current-user.decorator';
 import { CreateBeneficiaryDto } from './dto/create-beneficiary.dto';
 import { UpdateBeneficiaryDto } from './dto/update-beneficiary.dto';
 import { isAllowedBeneficiaryArea } from './constants/beneficiary-areas';
+import { LEBANESE_LOCAL_PHONE_REGEX } from './constants/lebanese-phone';
 import {
   beneficiaryStatusSortRank,
   parseForSelection,
@@ -446,7 +447,8 @@ export class BeneficiariesService {
         data: {
           fullName: rest.fullName,
           phone:
-            typeof rest.phone === 'string' && rest.phone.trim().length >= 3
+            typeof rest.phone === 'string' &&
+            LEBANESE_LOCAL_PHONE_REGEX.test(rest.phone.trim())
               ? rest.phone.trim()
               : BENEFICIARY_PHONE_NOT_PROVIDED,
           regionId: rest.regionId ?? null,
@@ -540,7 +542,8 @@ export class BeneficiariesService {
     if (scalar.fullName !== undefined) data.fullName = scalar.fullName;
     if (scalar.phone !== undefined) {
       const p = typeof scalar.phone === 'string' ? scalar.phone.trim() : '';
-      data.phone = p.length >= 3 ? p : BENEFICIARY_PHONE_NOT_PROVIDED;
+      if (p === '') data.phone = BENEFICIARY_PHONE_NOT_PROVIDED;
+      else if (LEBANESE_LOCAL_PHONE_REGEX.test(p)) data.phone = p;
     }
     if (scalar.district !== undefined) data.district = scalar.district;
     if (scalar.area !== undefined) {

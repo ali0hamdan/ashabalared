@@ -336,6 +336,367 @@ export class DistributionService {
     return buildPaginatedResult(rows, total, page, limit);
   }
 
+  /**
+   * Weekly / period tracking: distributions in a date range, optionally by aid category.
+   * Rows are flattened to one entry per (distribution × aid category) with line items for that category only.
+   */
+  async weeklyTracking(
+    actor: { userId: string; roleCode: RoleCode },
+    query: {
+      aidCategoryId?: string;
+      search?: string;
+      statusFilter?: string;
+      dateFrom: Date;
+      dateTo: Date;
+      driverId?: string;
+      page?: string;
+      limit?: string;
+    },
+  ): Promise<
+    PaginatedResult<{
+      distributionId: string;
+      beneficiary: {
+        id: string;
+        fullName: string;
+        phone: string;
+        area: string | null;
+        street: string | null;
+        householdSize: number;
+      };
+      aidCategory: { id: string; name: string };
+      items: Array<{
+        lineId: string;
+        aidCategoryItemId: string | null;
+        itemName: string;
+        quantityDelivered: number;
+        quantityPlanned: number;
+      }>;
+      driver: { id: string; displayName: string; username: string } | null;
+      confirmedBy: { id: string; displayName: string; username: string } | null;
+      deliveredAt: string | null;
+      cancelledAt: string | null;
+      status: DistributionStatus;
+      activityAt: string;
+    }>
+  > {
+    const where: Prisma.DistributionRecordWhereInput = {
+      beneficiary: { deletedAt: null },
+    };
+
+    if (actor.roleCode === RoleCode.DELIVERY) {
+      where.driverId = actor.userId;
+    } else if (query.driverId?.trim()) {
+      where.driverId = query.driverId.trim();
+    }
+
+    if (query.aidCategoryId?.trim()) {
+      where.items = {
+        some: { aidCategoryId: query.aidCategoryId.trim() },
+      };
+    }
+
+    const from = query.dateFrom;
+    const to = query.dateTo;
+
+    const sf = (query.statusFilter ?? 'received').trim().toLowerCase();
+    const statusWhere: Prisma.DistributionRecordWhereInput[] = [];
+
+    if (sf === 'all') {
+      statusWhere.push({
+        AND: [
+          { status: DistributionStatus.DELIVERED },
+          {
+            OR: [
+              {
+                deliveredAt: {
+                  gte: from,
+                  lte: to,
+                },
+              },
+              {
+                AND: [
+                  { deliveredAt: null },
+                  {
+                    updatedAt: {
+                      gte: from,
+                      lte: to,
+                    },
+                  },
+                ],
+              },
+            ],
+          },
+        ],
+      });
+      statusWhere.push({
+        AND: [
+          { status: { in: [DistributionStatus.PENDING, DistributionStatus.ASSIGNED] } },
+          {
+            createdAt: {
+              gte: from,
+              lte: to,
+            },
+          },
+        ],
+      });
+      statusWhere.push({
+        AND: [
+          { status: DistributionStatus.CANCELLED },
+          {
+            cancelledAt: {
+              gte: from,
+              lte: to,
+            },
+          },
+        ],
+      });
+      where.OR = statusWhere;
+    } else if (sf === 'pending') {
+      where.status = { in: [DistributionStatus.PENDING, DistributionStatus.ASSIGNED] };
+      where.createdAt = { gte: from, lte: to };
+    } else if (sf === 'cancelled') {
+      where.status = DistributionStatus.CANCELLED;
+      where.cancelledAt = { gte: from, lte: to };
+    } else {
+      /** received (default): delivered in period */
+      where.status = DistributionStatus.DELIVERED;
+      where.OR = [
+        {
+          deliveredAt: {
+            gte: from,
+            lte: to,
+          },
+        },
+        {
+          AND: [
+            { deliveredAt: null },
+            {
+              updatedAt: {
+                gte: from,
+                lte: to,
+              },
+            },
+          ],
+        },
+      ];
+    }
+
+    const q = query.search?.trim();
+    if (q) {
+      const iq = q;
+      const searchOr: Prisma.DistributionRecordWhereInput[] = [
+        { beneficiary: { fullName: { contains: iq, mode: 'insensitive' } } },
+        { beneficiary: { phone: { contains: iq, mode: 'insensitive' } } },
+        { beneficiary: { area: { contains: iq, mode: 'insensitive' } } },
+        { beneficiary: { addressLine: { contains: iq, mode: 'insensitive' } } },
+        {
+          beneficiary: {
+            region: {
+              is: {
+                OR: [
+                  { nameAr: { contains: iq, mode: 'insensitive' } },
+                  { nameEn: { contains: iq, mode: 'insensitive' } },
+                ],
+              },
+            },
+          },
+        },
+        {
+          driver: {
+            OR: [
+              { displayName: { contains: iq, mode: 'insensitive' } },
+              { username: { contains: iq, mode: 'insensitive' } },
+              { phone: { contains: iq, mode: 'insensitive' } },
+            ],
+          },
+        },
+        {
+          completedBy: {
+            OR: [
+              { displayName: { contains: iq, mode: 'insensitive' } },
+              { username: { contains: iq, mode: 'insensitive' } },
+            ],
+          },
+        },
+        {
+          items: {
+            some: {
+              OR: [
+                { aidCategory: { name: { contains: iq, mode: 'insensitive' } } },
+                { aidCategoryItem: { name: { contains: iq, mode: 'insensitive' } } },
+              ],
+            },
+          },
+        },
+      ];
+      const existingAnd = where.AND;
+      const andList = Array.isArray(existingAnd)
+        ? existingAnd
+        : existingAnd
+          ? [existingAnd]
+          : [];
+      where.AND = [...andList, { OR: searchOr }];
+    }
+
+    const trackingSelect = {
+      id: true,
+      status: true,
+      deliveredAt: true,
+      cancelledAt: true,
+      updatedAt: true,
+      createdAt: true,
+      beneficiary: {
+        select: {
+          id: true,
+          fullName: true,
+          phone: true,
+          area: true,
+          addressLine: true,
+          familyCount: true,
+        },
+      },
+      driver: {
+        select: { id: true, displayName: true, username: true },
+      },
+      completedBy: {
+        select: { id: true, displayName: true, username: true },
+      },
+      items: {
+        where: query.aidCategoryId?.trim()
+          ? { aidCategoryId: query.aidCategoryId.trim() }
+          : undefined,
+        select: {
+          id: true,
+          quantityPlanned: true,
+          quantityDelivered: true,
+          aidCategoryId: true,
+          aidCategoryItemId: true,
+          aidCategory: { select: { id: true, name: true } },
+          aidCategoryItem: {
+            select: { id: true, name: true },
+          },
+        },
+      },
+    } satisfies Prisma.DistributionRecordSelect;
+
+    const { page, limit, skip } = parsePaginationQuery({
+      page: query.page,
+      limit: query.limit,
+    });
+
+    /** Cap in-memory flatten + pagination (period queries should stay bounded). */
+    const WEEKLY_TRACKING_MAX_DISTRIBUTIONS = 2500;
+
+    const rawRows = await this.prisma.distributionRecord.findMany({
+      where,
+      orderBy:
+        sf === 'cancelled'
+          ? { cancelledAt: 'desc' }
+          : sf === 'pending'
+            ? { createdAt: 'desc' }
+            : [{ deliveredAt: 'desc' }, { updatedAt: 'desc' }],
+      take: WEEKLY_TRACKING_MAX_DISTRIBUTIONS,
+      select: trackingSelect,
+    });
+
+    type WeeklyRow = {
+      distributionId: string;
+      beneficiary: {
+        id: string;
+        fullName: string;
+        phone: string;
+        area: string | null;
+        street: string | null;
+        householdSize: number;
+      };
+      aidCategory: { id: string; name: string };
+      items: Array<{
+        lineId: string;
+        aidCategoryItemId: string | null;
+        itemName: string;
+        quantityDelivered: number;
+        quantityPlanned: number;
+      }>;
+      driver: { id: string; displayName: string; username: string } | null;
+      confirmedBy: { id: string; displayName: string; username: string } | null;
+      deliveredAt: string | null;
+      cancelledAt: string | null;
+      status: DistributionStatus;
+      activityAt: string;
+    };
+
+    const corrected: WeeklyRow[] = [];
+    for (const d of rawRows) {
+      const catMap = new Map<
+        string,
+        { name: string; lines: WeeklyRow['items'] }
+      >();
+      for (const it of d.items) {
+        const catId = it.aidCategoryId;
+        const catName = it.aidCategory?.name ?? '';
+        if (!catMap.has(catId)) catMap.set(catId, { name: catName, lines: [] });
+        const itemName =
+          it.aidCategoryItem?.name?.trim() ||
+          it.aidCategory?.name?.trim() ||
+          '';
+        const qDel = it.quantityDelivered ?? 0;
+        const qPlan = it.quantityPlanned ?? 0;
+        if (d.status === DistributionStatus.DELIVERED && qDel < 1) continue;
+        if (
+          (d.status === DistributionStatus.PENDING ||
+            d.status === DistributionStatus.ASSIGNED) &&
+          qPlan < 1
+        )
+          continue;
+        if (d.status === DistributionStatus.CANCELLED && qPlan < 1) continue;
+        catMap.get(catId)!.lines.push({
+          lineId: it.id,
+          aidCategoryItemId: it.aidCategoryItemId,
+          itemName,
+          quantityDelivered: qDel,
+          quantityPlanned: qPlan,
+        });
+      }
+
+      const ben = d.beneficiary;
+      const street = ben.addressLine?.trim() || null;
+      const activityMs =
+        d.status === DistributionStatus.DELIVERED
+          ? d.deliveredAt?.getTime() ?? d.updatedAt.getTime()
+          : d.status === DistributionStatus.CANCELLED
+            ? d.cancelledAt?.getTime() ?? d.updatedAt.getTime()
+            : d.createdAt.getTime();
+
+      for (const [catId, bundle] of catMap) {
+        if (!bundle.lines.length) continue;
+        corrected.push({
+          distributionId: d.id,
+          beneficiary: {
+            id: ben.id,
+            fullName: ben.fullName,
+            phone: ben.phone,
+            area: ben.area?.trim() || null,
+            street,
+            householdSize: ben.familyCount,
+          },
+          aidCategory: { id: catId, name: bundle.name },
+          items: bundle.lines,
+          driver: d.driver,
+          confirmedBy: d.completedBy,
+          deliveredAt: d.deliveredAt?.toISOString() ?? null,
+          cancelledAt: d.cancelledAt?.toISOString() ?? null,
+          status: d.status,
+          activityAt: new Date(activityMs).toISOString(),
+        });
+      }
+    }
+
+    const totalFlat = corrected.length;
+    const data = corrected.slice(skip, skip + limit);
+
+    return buildPaginatedResult(data, totalFlat, page, limit);
+  }
+
   async get(actor: { userId: string; roleCode: RoleCode }, id: string) {
     const d = await this.prisma.distributionRecord.findUnique({
       where: { id },

@@ -7,10 +7,13 @@ import {
   buildCategoryNeedsPayload,
   buildItemNeedsPayload,
   normalizeAidCategoriesForForm,
+  sanitizeDigitsOnly,
+  validateCategoryQtyInCheckedCategories,
   validateItemQtyInCheckedCategories,
   type ItemFieldRowState,
 } from '@/lib/beneficiaryItemNeeds';
 import { BENEFICIARY_AREA_VALUES, isAllowedBeneficiaryArea } from '@/lib/beneficiaryAreas';
+import { isOptionalLebaneseLocalPhoneValid, sanitizeLebaneseLocalPhoneInput } from '@/lib/lebanesePhone';
 import { BENEFICIARY_LIFECYCLE, type BeneficiaryLifecycle } from '@/lib/beneficiaryLifecycleStatus';
 import { api } from '@/lib/api';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
@@ -37,8 +40,9 @@ export function BeneficiaryNewPage() {
   const [recordStatus, setRecordStatus] = useState<BeneficiaryLifecycle>(BENEFICIARY_LIFECYCLE.ACTIVE);
   const [needsBundle, setNeedsBundle] = useState<{
     categoryChecked: Record<string, boolean>;
+    categoryQtyFields: Record<string, string>;
     itemFields: Record<string, ItemFieldRowState>;
-  }>({ categoryChecked: {}, itemFields: {} });
+  }>({ categoryChecked: {}, categoryQtyFields: {}, itemFields: {} });
   const [saving, setSaving] = useState(false);
 
   const catRows = useMemo(() => normalizeAidCategoriesForForm(categories), [categories]);
@@ -46,14 +50,16 @@ export function BeneficiaryNewPage() {
   useEffect(() => {
     setNeedsBundle((prev) => {
       const categoryChecked = { ...prev.categoryChecked };
+      const categoryQtyFields = { ...prev.categoryQtyFields };
       const itemFields = { ...prev.itemFields };
       for (const c of catRows) {
         if (!(c.id in categoryChecked)) categoryChecked[c.id] = false;
+        if (!(c.id in categoryQtyFields)) categoryQtyFields[c.id] = '';
         for (const it of c.items) {
           if (!(it.id in itemFields)) itemFields[it.id] = { notes: '', qty: '' };
         }
       }
-      return { categoryChecked, itemFields };
+      return { categoryChecked, categoryQtyFields, itemFields };
     });
   }, [catRows]);
 
@@ -77,6 +83,16 @@ export function BeneficiaryNewPage() {
     [],
   );
 
+  const setCategoryQtyFields = useCallback(
+    (u: SetStateAction<Record<string, string>>) => {
+      setNeedsBundle((s) => ({
+        ...s,
+        categoryQtyFields: typeof u === 'function' ? u(s.categoryQtyFields) : u,
+      }));
+    },
+    [],
+  );
+
   const hasAnyCatalogItems = useMemo(() => catRows.some((c) => c.items.length > 0), [catRows]);
 
   function validate(): boolean {
@@ -84,9 +100,8 @@ export function BeneficiaryNewPage() {
       toast.error(t('beneficiaryNew.validationFullName'));
       return false;
     }
-    const phoneTrim = phone.trim();
-    if (phoneTrim.length > 0 && phoneTrim.length < 3) {
-      toast.error(t('beneficiaryNew.validationPhoneMin'));
+    if (!isOptionalLebaneseLocalPhoneValid(phone)) {
+      toast.error(t('beneficiaryNew.validationPhoneFormat'));
       return false;
     }
     if (!area.trim() || !isAllowedBeneficiaryArea(area)) {
@@ -103,6 +118,15 @@ export function BeneficiaryNewPage() {
       toast.error(t('beneficiaryNew.validationItemNeedQty', { name: qtyCheck.itemName, category: qtyCheck.categoryName }));
       return false;
     }
+    const catQtyCheck = validateCategoryQtyInCheckedCategories(
+      catRows,
+      needsBundle.categoryChecked,
+      needsBundle.categoryQtyFields,
+    );
+    if (catQtyCheck.ok === false) {
+      toast.error(t('beneficiaryNew.validationCategoryQty', { name: catQtyCheck.categoryName }));
+      return false;
+    }
     return true;
   }
 
@@ -110,7 +134,11 @@ export function BeneficiaryNewPage() {
     if (!validate()) return;
     const familyCount = parseInt(householdSize, 10);
     const itemNeeds = buildItemNeedsPayload(catRows, needsBundle.categoryChecked, needsBundle.itemFields);
-    const categoryNeeds = buildCategoryNeedsPayload(catRows, needsBundle.categoryChecked);
+    const categoryNeeds = buildCategoryNeedsPayload(
+      catRows,
+      needsBundle.categoryChecked,
+      needsBundle.categoryQtyFields,
+    );
 
     const phoneTrim = phone.trim();
     const payload: Record<string, unknown> = {
@@ -127,7 +155,7 @@ export function BeneficiaryNewPage() {
     if (streetTrim) {
       payload.street = streetTrim;
     }
-    if (phoneTrim.length >= 3) {
+    if (phoneTrim.length === 8) {
       payload.phone = phoneTrim;
     }
     if (itemNeeds.length) {
@@ -167,20 +195,35 @@ export function BeneficiaryNewPage() {
             <Label>{t('beneficiaryNew.fullName')}</Label>
             <Input value={fullName} onChange={(e) => setFullName(e.target.value)} autoComplete="name" />
           </div>
-          <div className="space-y-2">
-            <Label>{t('beneficiaryNew.phone')}</Label>
-            <p className="text-xs text-muted-foreground">{t('beneficiaryNew.phoneOptionalHint')}</p>
-            <Input value={phone} onChange={(e) => setPhone(e.target.value)} autoComplete="tel" />
-          </div>
-          <div className="space-y-2">
-            <Label>{t('beneficiaryNew.householdSize')}</Label>
-            <Input
-              type="number"
-              min={1}
-              inputMode="numeric"
-              value={householdSize}
-              onChange={(e) => setHouseholdSize(e.target.value)}
-            />
+          <div className="grid grid-cols-1 gap-4 sm:col-span-2 sm:grid-cols-2">
+            <div className="min-w-0 space-y-2">
+              <Label>{t('beneficiaryNew.phone')}</Label>
+              <p className="text-xs text-muted-foreground">{t('beneficiaryNew.phoneOptionalHint')}</p>
+              <Input
+                type="text"
+                inputMode="numeric"
+                autoComplete="tel"
+                maxLength={8}
+                className="w-full tabular-nums"
+                placeholder="12345678"
+                value={phone}
+                onChange={(e) => setPhone(sanitizeLebaneseLocalPhoneInput(e.target.value))}
+              />
+            </div>
+            <div className="min-w-0 space-y-2">
+              <Label>{t('beneficiaryNew.householdSize')}</Label>
+              <p className="text-xs text-muted-foreground invisible select-none" aria-hidden="true">
+                {t('beneficiaryNew.phoneOptionalHint')}
+              </p>
+              <Input
+                type="text"
+                inputMode="numeric"
+                autoComplete="off"
+                className="w-full tabular-nums"
+                value={householdSize}
+                onChange={(e) => setHouseholdSize(sanitizeDigitsOnly(e.target.value))}
+              />
+            </div>
           </div>
           <div className="space-y-2 sm:col-span-2">
             <Label>{t('beneficiaryNew.recordStatus')}</Label>
@@ -245,6 +288,8 @@ export function BeneficiaryNewPage() {
           onCanCookChange={setCanCook}
           categoryChecked={needsBundle.categoryChecked}
           setCategoryChecked={setCategoryChecked}
+          categoryQtyFields={needsBundle.categoryQtyFields}
+          setCategoryQtyFields={setCategoryQtyFields}
           itemFields={needsBundle.itemFields}
           setItemFields={setItemFields}
         />

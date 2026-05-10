@@ -6,13 +6,16 @@ import {
   IsInt,
   IsOptional,
   IsString,
+  Matches,
   MaxLength,
   Min,
   MinLength,
+  ValidateIf,
   ValidateNested,
 } from 'class-validator';
 import { BeneficiaryStatus } from '@prisma/client';
 import { BENEFICIARY_AREA_VALUES } from '../constants/beneficiary-areas';
+import { LEBANESE_LOCAL_PHONE_REGEX } from '../constants/lebanese-phone';
 import { BeneficiaryCategoryNeedDto } from './beneficiary-category-need.dto';
 import { BeneficiaryItemNeedDto } from './beneficiary-item-need.dto';
 
@@ -21,16 +24,20 @@ export class CreateBeneficiaryDto {
   @MinLength(2)
   fullName!: string;
 
-  /** Omit or leave blank to store a generic not-provided value server-side. */
+  /** Omit or leave blank to store a generic not-provided value server-side. Otherwise exactly 8 digits (Lebanese local). */
   @IsOptional()
   @Transform(({ value }) => {
     if (value === undefined || value === null) return undefined;
     if (typeof value !== 'string') return value;
-    const t = value.trim();
-    return t.length ? t : undefined;
+    const digits = value.replace(/\D/g, '').slice(0, 8);
+    if (digits.length) return digits;
+    return value.trim() === '' ? '' : undefined;
   })
+  @ValidateIf((_, v) => typeof v === 'string' && v.length > 0)
   @IsString()
-  @MinLength(3)
+  @Matches(LEBANESE_LOCAL_PHONE_REGEX, {
+    message: 'Phone must be exactly 8 digits (Lebanese local format)',
+  })
   phone?: string;
 
   @Transform(({ value }) => (typeof value === 'string' ? value.trim() : value))

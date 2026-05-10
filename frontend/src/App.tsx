@@ -8,6 +8,7 @@ import { BeneficiariesHistoryPage } from '@/pages/BeneficiariesHistoryPage';
 import { CategoriesPage } from '@/pages/CategoriesPage';
 import { StockPage } from '@/pages/StockPage';
 import { DistributionsPage } from '@/pages/DistributionsPage';
+import { WeeklyTrackingPage } from '@/pages/WeeklyTrackingPage';
 import { DistributionNewPage } from '@/pages/DistributionNewPage';
 import { UsersPage } from '@/pages/UsersPage';
 import { AuditPage } from '@/pages/AuditPage';
@@ -71,6 +72,7 @@ export default function App() {
               }
             />
             <Route path="/app/distributions" element={<DistributionsPage />} />
+            <Route path="/app/weekly-tracking" element={<WeeklyTrackingPage />} />
             <Route
               path="/app/distributions/new"
               element={

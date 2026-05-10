@@ -14,6 +14,7 @@ import {
   User,
   X,
   History,
+  CalendarDays,
 } from 'lucide-react';
 import { NavLink, Outlet, useLocation, useNavigate } from 'react-router-dom';
 import { toast } from 'sonner';
@@ -40,6 +41,7 @@ function getNavItems(): NavItem[] {
     { to: '/app/categories', labelKey: 'nav.categories', icon: Package, roles: ['SUPER_ADMIN', 'ADMIN'] },
     { to: '/app/stock', labelKey: 'nav.stock', icon: Warehouse, roles: ['SUPER_ADMIN', 'ADMIN'] },
     { to: '/app/distributions', labelKey: 'nav.distributions', icon: ClipboardList, roles: ['SUPER_ADMIN', 'ADMIN', 'DELIVERY'] },
+    { to: '/app/weekly-tracking', labelKey: 'nav.weeklyTracking', icon: CalendarDays, roles: ['SUPER_ADMIN', 'ADMIN', 'DELIVERY'] },
     { to: '/app/users', labelKey: 'nav.users', icon: Shield, roles: ['SUPER_ADMIN'] },
     { to: '/app/audit', labelKey: 'nav.audit', icon: FileText, roles: ['SUPER_ADMIN', 'ADMIN'] },
     { to: '/app/profile', labelKey: 'nav.profile', icon: User, roles: ['SUPER_ADMIN', 'ADMIN', 'DELIVERY'] },
