@@ -473,6 +473,7 @@
     "itemNotesLabel": "ملاحظات لهذا البند",
     "itemUnit": "الوحدة: {{unit}}",
     "canCook": "يستطيع الطبخ",
+    "foodRationsCookHint": "الحصص الغذائية تتطلب أن يكون المستفيد قادرًا على الطبخ.",
     "categoryNotesLabel": "ملاحظات لهذه الفئة",
     "categoryNotesPlaceholder": "ملاحظات (اختياري)",
     "householdSize": "حجم الأسرة",

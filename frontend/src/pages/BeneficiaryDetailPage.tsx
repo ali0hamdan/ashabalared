@@ -12,6 +12,7 @@ import {
   type AidCatalogCategory,
   type ItemFieldRowState,
 } from '@/lib/beneficiaryItemNeeds';
+import { applyFoodRationsCookingGate } from '@/lib/foodRationsCategory';
 import { api } from '@/lib/api';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useParams } from 'react-router-dom';
@@ -84,6 +85,11 @@ function buildEditDraft(data: BeneficiaryDetailApi, catRows: AidCatalogCategory[
       if (!(it.id in itemFields)) itemFields[it.id] = { notes: '', qty: '' };
     }
   }
+  const gated = applyFoodRationsCookingGate(Boolean(data.cookingStove), catRows, {
+    categoryChecked,
+    categoryQtyFields,
+    itemFields,
+  });
   const streetRaw =
     typeof data.street === 'string' ? data.street : typeof data.addressLine === 'string' ? data.addressLine : '';
   return {
@@ -94,9 +100,9 @@ function buildEditDraft(data: BeneficiaryDetailApi, catRows: AidCatalogCategory[
     recordStatus: normalizeBeneficiaryLifecycle(data.status),
     householdSize: String(data.familyCount ?? 1),
     canCook: Boolean(data.cookingStove),
-    categoryChecked,
-    categoryQtyFields,
-    itemFields,
+    categoryChecked: gated.categoryChecked,
+    categoryQtyFields: gated.categoryQtyFields,
+    itemFields: gated.itemFields,
   };
 }
 
@@ -253,12 +259,17 @@ export function BeneficiaryDetailPage() {
   function saveEdit() {
     if (!editDraft || !validateEdit()) return;
     const familyCount = parseInt(editDraft.householdSize, 10);
-    const itemNeeds = buildItemNeedsPayload(catRows, editDraft.categoryChecked, editDraft.itemFields);
+    const gated = applyFoodRationsCookingGate(editDraft.canCook, catRows, {
+      categoryChecked: editDraft.categoryChecked,
+      categoryQtyFields: editDraft.categoryQtyFields,
+      itemFields: editDraft.itemFields,
+    });
+    const itemNeeds = buildItemNeedsPayload(catRows, gated.categoryChecked, gated.itemFields);
     const beneficiaryCategories = data.categories ?? [];
     const categoryNeeds = buildCategoryNeedsPayload(
       catRows,
-      editDraft.categoryChecked,
-      editDraft.categoryQtyFields,
+      gated.categoryChecked,
+      gated.categoryQtyFields,
       beneficiaryCategories as Parameters<typeof buildCategoryNeedsPayload>[3],
     );
     const body: Record<string, unknown> = {
@@ -415,7 +426,20 @@ export function BeneficiaryDetailPage() {
                 catRows={catRows}
                 hasAnyCatalogItems={catRows.some((c) => c.items.length > 0)}
                 canCook={editDraft.canCook}
-                onCanCookChange={(v) => setEditDraft((d) => (d ? { ...d, canCook: v } : d))}
+                onCanCookChange={(v) =>
+                  setEditDraft((d) => {
+                    if (!d) return d;
+                    if (!v) {
+                      const next = applyFoodRationsCookingGate(false, catRows, {
+                        categoryChecked: d.categoryChecked,
+                        categoryQtyFields: d.categoryQtyFields,
+                        itemFields: d.itemFields,
+                      });
+                      return { ...d, canCook: false, ...next };
+                    }
+                    return { ...d, canCook: true };
+                  })
+                }
                 categoryChecked={editDraft.categoryChecked}
                 setCategoryChecked={(u) =>
                   setEditDraft((d) => {

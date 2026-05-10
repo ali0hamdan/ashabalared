@@ -6,6 +6,7 @@ import { ChevronDown, ChevronRight } from 'lucide-react';
 import type { Dispatch, SetStateAction } from 'react';
 import { useState } from 'react';
 import { sanitizeDigitsOnly, type AidCatalogCategory, type ItemFieldRowState } from '@/lib/beneficiaryItemNeeds';
+import { isFoodRationsAidCategory } from '@/lib/foodRationsCategory';
 
 type Props = {
   t: TFunction;
@@ -51,6 +52,8 @@ export function BeneficiaryItemNeedsFields({
   }
 
   function setCategoryNeed(categoryId: string, checked: boolean) {
+    const cat = catRows.find((c) => c.id === categoryId);
+    if (cat && !canCook && isFoodRationsAidCategory(cat) && checked) return;
     setCategoryChecked((m) => ({ ...m, [categoryId]: checked }));
     if (!checked) {
       setCategoryQtyFields((m) => ({ ...m, [categoryId]: '' }));
@@ -72,24 +75,31 @@ export function BeneficiaryItemNeedsFields({
         <div className="text-sm text-muted-foreground">{t('common.loading')}</div>
       ) : (
         <div className="space-y-4">
-          <div className="flex items-center gap-3 rounded-lg border border-border bg-muted/30 px-3 py-2.5">
-            <input
-              id="beneficiary-can-cook-fields"
-              type="checkbox"
-              checked={canCook}
-              onChange={(e) => onCanCookChange(e.target.checked)}
-              className="h-4 w-4 shrink-0 rounded border border-input accent-primary"
-            />
-            <Label htmlFor="beneficiary-can-cook-fields" className="cursor-pointer text-sm font-medium leading-none">
-              {t('beneficiaryNew.canCook')}
-            </Label>
+          <div className="space-y-1.5 rounded-lg border border-border bg-muted/30 px-3 py-2.5">
+            <div className="flex items-center gap-3">
+              <input
+                id="beneficiary-can-cook-fields"
+                type="checkbox"
+                checked={canCook}
+                onChange={(e) => onCanCookChange(e.target.checked)}
+                className="h-4 w-4 shrink-0 rounded border border-input accent-primary"
+              />
+              <Label htmlFor="beneficiary-can-cook-fields" className="cursor-pointer text-sm font-medium leading-none">
+                {t('beneficiaryNew.canCook')}
+              </Label>
+            </div>
+            {!canCook ? (
+              <p className="ps-7 text-xs text-muted-foreground">{t('beneficiaryNew.foodRationsCookHint')}</p>
+            ) : null}
           </div>
 
           {!hasAnyCatalogItems ? (
             <p className="text-sm text-muted-foreground">{t('beneficiaryNew.noCatalogItems')}</p>
           ) : (
             catRows.map((c) => {
+              const foodBlocked = !canCook && isFoodRationsAidCategory(c);
               const catOn = Boolean(categoryChecked[c.id]);
+              const catEffectiveOn = foodBlocked ? false : catOn;
               const catInputId = `need-category-${c.id}`;
               const itemsVisible = categoryItemsVisible(c.id);
               const hasItems = c.items.length > 0;
@@ -106,11 +116,18 @@ export function BeneficiaryItemNeedsFields({
                         <input
                           id={catInputId}
                           type="checkbox"
-                          checked={catOn}
+                          checked={catEffectiveOn}
+                          disabled={foodBlocked}
                           onChange={(e) => setCategoryNeed(c.id, e.target.checked)}
-                          className="mt-0.5 h-4 w-4 shrink-0 rounded border border-input accent-primary"
+                          className="mt-0.5 h-4 w-4 shrink-0 rounded border border-input accent-primary disabled:cursor-not-allowed disabled:opacity-50"
                         />
-                        <Label htmlFor={catInputId} className="cursor-pointer text-base font-semibold leading-snug text-foreground">
+                        <Label
+                          htmlFor={catInputId}
+                          className={cn(
+                            'min-w-0 flex-1 text-base font-semibold leading-snug text-foreground',
+                            foodBlocked ? 'cursor-not-allowed opacity-70' : 'cursor-pointer',
+                          )}
+                        >
                           {c.name}
                         </Label>
                       </div>
@@ -127,7 +144,7 @@ export function BeneficiaryItemNeedsFields({
                           inputMode="numeric"
                           autoComplete="off"
                           className="h-9 w-[4.5rem] tabular-nums"
-                          disabled={!catOn}
+                          disabled={!catEffectiveOn}
                           placeholder="0"
                           value={categoryQtyFields[c.id] ?? ''}
                           onChange={(e) =>
@@ -164,10 +181,13 @@ export function BeneficiaryItemNeedsFields({
                   {c.items.length === 0 ? (
                     <p className="text-sm text-muted-foreground">{t('beneficiaryNew.categoryNoItems')}</p>
                   ) : itemsVisible ? (
-                    <ul id={`need-category-items-${c.id}`} className={`space-y-3 ${!catOn ? 'opacity-60' : ''}`}>
+                    <ul
+                      id={`need-category-items-${c.id}`}
+                      className={`space-y-3 ${!catEffectiveOn ? 'opacity-60' : ''}`}
+                    >
                       {c.items.map((it) => {
                         const st = itemFields[it.id] ?? { notes: '', qty: '' };
-                        const disabled = !catOn;
+                        const disabled = !catEffectiveOn;
                         return (
                           <li
                             key={it.id}

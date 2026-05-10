@@ -33,6 +33,7 @@ import {
   parsePaginationQuery,
   type PaginatedResult,
 } from '../common/pagination';
+import { isFoodRationsCategoryName } from '../beneficiaries/constants/food-rations-category';
 
 /** Slim payload for list/grid pages (avoids heavy stock nesting). */
 const distributionListSelect = {
@@ -749,13 +750,27 @@ export class DistributionService {
           quantityOnHand: true,
 
           aidCategoryItem: {
-            select: { id: true, name: true, aidCategoryId: true },
+            select: {
+              id: true,
+              name: true,
+              aidCategoryId: true,
+              aidCategory: { select: { id: true, name: true } },
+            },
           },
         },
       });
 
       if (!stock?.aidCategoryItem)
         throw new BadRequestException('صنف مخزون غير صالح');
+
+      if (
+        !beneficiary.cookingStove &&
+        isFoodRationsCategoryName(stock.aidCategoryItem.aidCategory?.name)
+      ) {
+        throw new BadRequestException(
+          'This beneficiary cannot receive food rations because Can cook is not enabled.',
+        );
+      }
 
       if (line.quantity > stock.quantityOnHand) {
         throw new BadRequestException(

@@ -473,6 +473,7 @@
     "itemNotesLabel": "Notes for this item",
     "itemUnit": "Unit: {{unit}}",
     "canCook": "Can cook",
+    "foodRationsCookHint": "Food rations require Can cook to be enabled.",
     "categoryNotesLabel": "Notes for this category",
     "categoryNotesPlaceholder": "Notes (optional)",
     "householdSize": "Household size",

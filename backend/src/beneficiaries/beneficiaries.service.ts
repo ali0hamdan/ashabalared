@@ -17,6 +17,7 @@ import { CreateBeneficiaryDto } from './dto/create-beneficiary.dto';
 import { UpdateBeneficiaryDto } from './dto/update-beneficiary.dto';
 import { isAllowedBeneficiaryArea } from './constants/beneficiary-areas';
 import { LEBANESE_LOCAL_PHONE_REGEX } from './constants/lebanese-phone';
+import { isFoodRationsCategoryName } from './constants/food-rations-category';
 import {
   beneficiaryStatusSortRank,
   parseForSelection,
@@ -157,6 +158,86 @@ export class BeneficiariesService {
       quantity: v.quantity,
       notes: v.notes,
     }));
+  }
+
+  /** Remove beneficiary category + item needs tied to food-rations aid categories (when Can cook is false). */
+  private async removeFoodRationsBeneficiaryNeeds(
+    tx: Prisma.TransactionClient,
+    beneficiaryId: string,
+  ): Promise<void> {
+    const foodCats = await tx.aidCategory.findMany({
+      select: { id: true, name: true },
+    });
+    const foodCategoryIds = foodCats
+      .filter((c) => isFoodRationsCategoryName(c.name))
+      .map((c) => c.id);
+    if (!foodCategoryIds.length) return;
+
+    await tx.beneficiaryCategory.deleteMany({
+      where: {
+        beneficiaryId,
+        categoryId: { in: foodCategoryIds },
+      },
+    });
+
+    const foodItems = await tx.aidCategoryItem.findMany({
+      where: { aidCategoryId: { in: foodCategoryIds } },
+      select: { id: true },
+    });
+    const foodItemIds = foodItems.map((i) => i.id);
+    if (!foodItemIds.length) return;
+
+    await tx.beneficiaryItemNeed.deleteMany({
+      where: {
+        beneficiaryId,
+        aidCategoryItemId: { in: foodItemIds },
+      },
+    });
+  }
+
+  /**
+   * Food rations require cooking ability; rejects API payloads that select food without Can cook.
+   */
+  private async assertFoodRationsRequiresCooking(
+    canCook: boolean,
+    categoryNeeds: { categoryId: string }[],
+    itemNeeds: { aidCategoryItemId: string }[],
+  ): Promise<void> {
+    if (canCook) return;
+
+    const catIds = [...new Set(categoryNeeds.map((n) => n.categoryId).filter(Boolean))];
+    const itemIds = [...new Set(itemNeeds.map((n) => n.aidCategoryItemId).filter(Boolean))];
+
+    if (catIds.length) {
+      const cats = await this.prisma.aidCategory.findMany({
+        where: { id: { in: catIds } },
+        select: { id: true, name: true },
+      });
+      for (const c of cats) {
+        if (isFoodRationsCategoryName(c.name)) {
+          throw new BadRequestException(
+            'Food rations category requires Can cook to be enabled.',
+          );
+        }
+      }
+    }
+
+    if (itemIds.length) {
+      const items = await this.prisma.aidCategoryItem.findMany({
+        where: { id: { in: itemIds } },
+        select: {
+          id: true,
+          aidCategory: { select: { name: true } },
+        },
+      });
+      for (const it of items) {
+        if (isFoodRationsCategoryName(it.aidCategory?.name)) {
+          throw new BadRequestException(
+            'Food rations items require Can cook to be enabled.',
+          );
+        }
+      }
+    }
   }
 
   private groupItemNeedsByCategory(
@@ -437,6 +518,8 @@ export class BeneficiariesService {
     } = dto;
     const catNeeds = this.normalizeCategoryNeeds(categoryNeeds, categoryIds);
     const itemNeedRows = this.normalizeItemNeeds(itemNeeds ?? needs);
+    const canCook = rest.cookingStove ?? false;
+    await this.assertFoodRationsRequiresCooking(canCook, catNeeds, itemNeedRows);
     await this.ensureCategoryIdsExist(catNeeds.map((n) => n.categoryId));
     await this.ensureAidCategoryItemIdsExist(
       itemNeedRows.map((n) => n.aidCategoryItemId),
@@ -531,6 +614,16 @@ export class BeneficiariesService {
     const itemNeedRows = replaceItemNeeds
       ? this.normalizeItemNeeds(itemNeedPayload)
       : null;
+
+    const nextCooking =
+      dto.cookingStove !== undefined ? dto.cookingStove : existing.cookingStove;
+    if (replaceCategories && catNeeds) {
+      await this.assertFoodRationsRequiresCooking(nextCooking, catNeeds, []);
+    }
+    if (replaceItemNeeds && itemNeedRows) {
+      await this.assertFoodRationsRequiresCooking(nextCooking, [], itemNeedRows);
+    }
+
     if (replaceCategories)
       await this.ensureCategoryIdsExist(catNeeds!.map((n) => n.categoryId));
     if (replaceItemNeeds)
@@ -573,8 +666,8 @@ export class BeneficiariesService {
       else data.region = { connect: { id: regionId } };
     }
 
-    const beneficiary = await this.prisma.$transaction(async (tx) =>
-      tx.beneficiary.update({
+    const beneficiary = await this.prisma.$transaction(async (tx) => {
+      const updated = await tx.beneficiary.update({
         where: { id },
         data: {
           ...data,
@@ -613,8 +706,20 @@ export class BeneficiariesService {
             : {}),
         },
         include: this.beneficiaryInclude(),
-      }),
-    );
+      });
+
+      const finalCooking = updated.cookingStove;
+      if (finalCooking === false) {
+        await this.removeFoodRationsBeneficiaryNeeds(tx, id);
+      }
+
+      const out = await tx.beneficiary.findFirst({
+        where: { id },
+        include: this.beneficiaryInclude(),
+      });
+      if (!out) throw new NotFoundException();
+      return out;
+    });
 
     await this.prisma.beneficiaryTimelineEvent.create({
       data: {

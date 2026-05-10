@@ -12,6 +12,7 @@ import {
   validateItemQtyInCheckedCategories,
   type ItemFieldRowState,
 } from '@/lib/beneficiaryItemNeeds';
+import { applyFoodRationsCookingGate } from '@/lib/foodRationsCategory';
 import { BENEFICIARY_AREA_VALUES, isAllowedBeneficiaryArea } from '@/lib/beneficiaryAreas';
 import { isOptionalLebaneseLocalPhoneValid, sanitizeLebaneseLocalPhoneInput } from '@/lib/lebanesePhone';
 import { BENEFICIARY_LIFECYCLE, type BeneficiaryLifecycle } from '@/lib/beneficiaryLifecycleStatus';
@@ -62,6 +63,19 @@ export function BeneficiaryNewPage() {
       return { categoryChecked, categoryQtyFields, itemFields };
     });
   }, [catRows]);
+
+  useEffect(() => {
+    if (!canCook) {
+      setNeedsBundle((prev) => applyFoodRationsCookingGate(false, catRows, prev));
+    }
+  }, [catRows, canCook]);
+
+  function handleCanCookChange(v: boolean) {
+    setCanCook(v);
+    if (!v) {
+      setNeedsBundle((prev) => applyFoodRationsCookingGate(false, catRows, prev));
+    }
+  }
 
   const setCategoryChecked = useCallback(
     (u: SetStateAction<Record<string, boolean>>) => {
@@ -133,11 +147,12 @@ export function BeneficiaryNewPage() {
   async function submit() {
     if (!validate()) return;
     const familyCount = parseInt(householdSize, 10);
-    const itemNeeds = buildItemNeedsPayload(catRows, needsBundle.categoryChecked, needsBundle.itemFields);
+    const gated = applyFoodRationsCookingGate(canCook, catRows, needsBundle);
+    const itemNeeds = buildItemNeedsPayload(catRows, gated.categoryChecked, gated.itemFields);
     const categoryNeeds = buildCategoryNeedsPayload(
       catRows,
-      needsBundle.categoryChecked,
-      needsBundle.categoryQtyFields,
+      gated.categoryChecked,
+      gated.categoryQtyFields,
     );
 
     const phoneTrim = phone.trim();
@@ -285,7 +300,7 @@ export function BeneficiaryNewPage() {
           catRows={catRows}
           hasAnyCatalogItems={hasAnyCatalogItems}
           canCook={canCook}
-          onCanCookChange={setCanCook}
+          onCanCookChange={handleCanCookChange}
           categoryChecked={needsBundle.categoryChecked}
           setCategoryChecked={setCategoryChecked}
           categoryQtyFields={needsBundle.categoryQtyFields}
