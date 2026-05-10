@@ -1,3 +1,5 @@
+import { BeneficiaryDuplicateWarnings } from '@/components/BeneficiaryDuplicateWarnings';
+import { PageHeader } from '@/components/layout/PageHeader';
 import { Button } from '@/components/ui/button';
 import { Card, CardDescription, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
@@ -16,6 +18,7 @@ import { applyFoodRationsCookingGate } from '@/lib/foodRationsCategory';
 import { BENEFICIARY_AREA_VALUES, isAllowedBeneficiaryArea } from '@/lib/beneficiaryAreas';
 import { isOptionalLebaneseLocalPhoneValid, sanitizeLebaneseLocalPhoneInput } from '@/lib/lebanesePhone';
 import { BENEFICIARY_LIFECYCLE, type BeneficiaryLifecycle } from '@/lib/beneficiaryLifecycleStatus';
+import { useBeneficiaryDuplicateCheck } from '@/hooks/useBeneficiaryDuplicateCheck';
 import { api } from '@/lib/api';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useCallback, useEffect, useMemo, useState, type SetStateAction } from 'react';
@@ -45,8 +48,19 @@ export function BeneficiaryNewPage() {
     itemFields: Record<string, ItemFieldRowState>;
   }>({ categoryChecked: {}, categoryQtyFields: {}, itemFields: {} });
   const [saving, setSaving] = useState(false);
+  const [phoneDuplicateAck, setPhoneDuplicateAck] = useState(false);
+
+  const duplicateFields = useMemo(
+    () => ({ fullName, phone, area, street }),
+    [fullName, phone, area, street],
+  );
+  const duplicateCheck = useBeneficiaryDuplicateCheck(duplicateFields, undefined);
 
   const catRows = useMemo(() => normalizeAidCategoriesForForm(categories), [categories]);
+
+  useEffect(() => {
+    setPhoneDuplicateAck(false);
+  }, [phone]);
 
   useEffect(() => {
     setNeedsBundle((prev) => {
@@ -141,6 +155,10 @@ export function BeneficiaryNewPage() {
       toast.error(t('beneficiaryNew.validationCategoryQty', { name: catQtyCheck.categoryName }));
       return false;
     }
+    if (duplicateCheck.data?.hasExactPhoneDuplicate && !phoneDuplicateAck) {
+      toast.error(t('beneficiaryDuplicate.mustAcknowledgePhone'));
+      return false;
+    }
     return true;
   }
 
@@ -195,17 +213,14 @@ export function BeneficiaryNewPage() {
   }
 
   return (
-    <div className="space-y-4">
-      <div>
-        <h1 className="text-2xl font-bold">{t('beneficiaryNew.title')}</h1>
-        <p className="text-sm text-muted-foreground">{t('beneficiaryNew.subtitle')}</p>
-      </div>
+    <div className="space-y-8">
+      <PageHeader title={t('beneficiaryNew.title')} description={t('beneficiaryNew.subtitle')} />
 
-      <Card className="space-y-4 p-4 sm:p-6">
+      <Card className="space-y-5 p-5 sm:p-7">
         <CardTitle>{t('beneficiaryNew.sectionData')}</CardTitle>
         <CardDescription>{t('beneficiaryNew.sectionDataDesc')}</CardDescription>
 
-        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+        <div className="grid grid-cols-1 gap-5 sm:grid-cols-2">
           <div className="space-y-2 sm:col-span-2">
             <Label>{t('beneficiaryNew.fullName')}</Label>
             <Input value={fullName} onChange={(e) => setFullName(e.target.value)} autoComplete="name" />
@@ -243,7 +258,7 @@ export function BeneficiaryNewPage() {
           <div className="space-y-2 sm:col-span-2">
             <Label>{t('beneficiaryNew.recordStatus')}</Label>
             <p className="text-xs text-muted-foreground">{t('beneficiaryNew.recordStatusHint')}</p>
-            <div className="flex flex-wrap gap-2 rounded-md border border-border bg-muted/30 p-1">
+            <div className="flex flex-wrap gap-2 rounded-xl border border-border/70 bg-muted/35 p-1.5">
               <Button
                 type="button"
                 variant={recordStatus === BENEFICIARY_LIFECYCLE.ACTIVE ? 'primary' : 'outline'}
@@ -266,7 +281,7 @@ export function BeneficiaryNewPage() {
             <Label>{t('beneficiaryNew.area')}</Label>
             <select
               required
-              className="h-10 w-full rounded-md border border-border bg-card px-3 text-sm"
+              className="form-select"
               value={area}
               onChange={(e) => setArea(e.target.value)}
             >
@@ -288,10 +303,17 @@ export function BeneficiaryNewPage() {
               placeholder={t('beneficiaryNew.streetPlaceholder')}
             />
           </div>
+          <BeneficiaryDuplicateWarnings
+            result={duplicateCheck.data}
+            isLoading={duplicateCheck.isLoading}
+            isFetching={duplicateCheck.isFetching}
+            phoneDuplicateAcknowledged={phoneDuplicateAck}
+            onPhoneDuplicateAcknowledgedChange={setPhoneDuplicateAck}
+          />
         </div>
       </Card>
 
-      <Card className="space-y-3 p-4 sm:p-6">
+      <Card className="space-y-4 p-5 sm:p-7">
         <CardTitle>{t('beneficiaryNew.needsTitle')}</CardTitle>
         <CardDescription>{t('beneficiaryNew.needsDescItems')}</CardDescription>
         <BeneficiaryItemNeedsFields
@@ -314,7 +336,13 @@ export function BeneficiaryNewPage() {
         <Button variant="outline" type="button" onClick={() => navigate(-1)}>
           {t('common.back')}
         </Button>
-        <Button type="button" disabled={saving} onClick={() => void submit()}>
+        <Button
+          type="button"
+          disabled={
+            saving || Boolean(duplicateCheck.data?.hasExactPhoneDuplicate && !phoneDuplicateAck)
+          }
+          onClick={() => void submit()}
+        >
           {saving ? t('common.saving') : t('common.save')}
         </Button>
       </div>

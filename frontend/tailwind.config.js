@@ -13,8 +13,16 @@ export default {
         card: { DEFAULT: 'hsl(var(--card))', foreground: 'hsl(var(--card-foreground))' },
         accent: { DEFAULT: 'hsl(var(--accent))', foreground: 'hsl(var(--accent-foreground))' },
         destructive: { DEFAULT: 'hsl(var(--destructive))', foreground: 'hsl(var(--destructive-foreground))' },
+        ring: 'hsl(var(--ring))',
       },
-      borderRadius: { lg: '0.75rem', md: '0.5rem', sm: '0.375rem' },
+      borderRadius: { lg: '0.75rem', md: '0.5rem', sm: '0.375rem', xl: '1rem', '2xl': '1.25rem' },
+      boxShadow: {
+        card: '0 1px 2px rgba(15, 23, 42, 0.04), 0 4px 14px rgba(15, 23, 42, 0.05)',
+        soft: '0 1px 3px rgba(15, 23, 42, 0.06)',
+      },
+      ringOffsetColor: {
+        background: 'hsl(var(--background))',
+      },
       fontFamily: {
         sans: ['"Noto Sans Arabic"', 'system-ui', 'sans-serif'],
       },

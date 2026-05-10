@@ -1,5 +1,4 @@
 import { Button } from '@/components/ui/button';
-import { Card } from '@/components/ui/card';
 import { Dialog } from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -12,6 +11,9 @@ import { useTranslation } from 'react-i18next';
 import { useAuthStore } from '@/store/auth';
 import { parseDeleteBlocked, type DeleteBlockedPayload } from '@/lib/deleteBlocked';
 import { AdminForceDeletePanel } from '@/components/AdminForceDeletePanel';
+import { DataTableShell } from '@/components/layout/DataTableShell';
+import { PageHeader } from '@/components/layout/PageHeader';
+import { UsersTableSkeleton } from '@/components/table-skeletons';
 import type { UserRow } from '@/types/api-shapes';
 
 function userDeleteErrorMessage(e: unknown, fallback: string): string {
@@ -137,47 +139,53 @@ export function UsersPage() {
   }
 
   return (
-    <div className="space-y-4">
-      <div className="flex flex-col gap-2 md:flex-row md:items-end md:justify-between">
-        <div>
-          <h1 className="text-2xl font-bold">{t('users.title')}</h1>
-          <p className="text-sm text-muted-foreground">{t('users.subtitle')}</p>
-        </div>
-        <Button type="button" onClick={() => setOpen(true)}>
-          {t('users.newUser')}
-        </Button>
-      </div>
+    <div className="space-y-8">
+      <PageHeader
+        title={t('users.title')}
+        description={t('users.subtitle')}
+        actions={
+          <Button type="button" onClick={() => setOpen(true)}>
+            {t('users.newUser')}
+          </Button>
+        }
+      />
 
-      <Card className="max-w-full overflow-x-auto p-0">
+      <DataTableShell>
         {isLoading ? (
-          <div className="p-6 text-sm text-muted-foreground">{t('common.loading')}</div>
+          <div className="p-0" aria-busy={true}>
+            <UsersTableSkeleton rows={8} />
+          </div>
         ) : (
           <table className="w-full min-w-[980px] text-sm">
-            <thead className="bg-muted/40 text-start">
-              <tr className="border-b border-border">
-                <th className="p-3">{t('users.colDisplay')}</th>
-                <th className="p-3">{t('users.colUsername')}</th>
-                <th className="p-3">{t('users.colRole')}</th>
-                <th className="p-3">{t('users.colStatus')}</th>
-                <th className="p-3">{t('users.colAction')}</th>
-                <th className="p-3">{t('users.colDelete')}</th>
+            <thead className="data-table-head">
+              <tr>
+                <th className="data-table-th border-e border-border/40">{t('users.colDisplay')}</th>
+                <th className="data-table-th border-e border-border/40">{t('users.colUsername')}</th>
+                <th className="data-table-th border-e border-border/40">{t('users.colRole')}</th>
+                <th className="data-table-th border-e border-border/40">{t('users.colStatus')}</th>
+                <th className="data-table-th border-e border-border/40">{t('users.colAction')}</th>
+                <th className="data-table-th">{t('users.colDelete')}</th>
               </tr>
             </thead>
             <tbody>
               {rows.map((u) => (
-                <tr key={u.id} className="border-b border-border hover:bg-muted/20">
-                  <td className="p-3 font-medium">{u.displayName}</td>
-                  <td className="p-3">{u.username}</td>
-                  <td className="p-3">{u.role?.code}</td>
-                  <td className="p-3">
-                    {u.isActive ? <Badge variant="success">{t('users.active')}</Badge> : <Badge variant="danger">{t('users.inactive')}</Badge>}
+                <tr key={u.id} className="data-table-row border-b border-border/60">
+                  <td className="data-table-td border-e border-border/40 font-medium">{u.displayName}</td>
+                  <td className="data-table-td border-e border-border/40">{u.username}</td>
+                  <td className="data-table-td border-e border-border/40">{u.role?.code}</td>
+                  <td className="data-table-td border-e border-border/40">
+                    {u.isActive ? (
+                      <Badge variant="success">{t('users.active')}</Badge>
+                    ) : (
+                      <Badge variant="neutral">{t('users.inactive')}</Badge>
+                    )}
                   </td>
-                  <td className="p-3">
+                  <td className="data-table-td border-e border-border/40">
                     <Button className="h-9 px-3 text-xs" variant="outline" type="button" onClick={() => void reset(u.id)}>
                       {t('users.resetPassword')}
                     </Button>
                   </td>
-                  <td className="p-3">
+                  <td className="data-table-td">
                     <Button className="h-9 px-3 text-xs" variant="outline" type="button" onClick={() => setDelUser(u)}>
                       {t('common.delete')}
                     </Button>
@@ -187,7 +195,7 @@ export function UsersPage() {
             </tbody>
           </table>
         )}
-      </Card>
+      </DataTableShell>
 
       <Dialog
         open={open}
@@ -221,7 +229,7 @@ export function UsersPage() {
           <div className="space-y-2">
             <Label>{t('users.labelRole')}</Label>
             <select
-              className="h-10 w-full rounded-md border border-border bg-card px-3 text-sm"
+              className="form-select"
               value={roleCode}
               onChange={(e) => setRoleCode(e.target.value as 'ADMIN' | 'DELIVERY')}
             >

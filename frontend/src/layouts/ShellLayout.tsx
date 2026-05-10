@@ -9,6 +9,7 @@ import {
   Users,
   Warehouse,
   ClipboardList,
+  MapPin,
   Shield,
   FileText,
   User,
@@ -18,6 +19,7 @@ import {
 } from 'lucide-react';
 import { NavLink, Outlet, useLocation, useNavigate } from 'react-router-dom';
 import { toast } from 'sonner';
+import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { LanguageSwitcher } from '@/components/LanguageSwitcher';
 import { ThemeToggle } from '@/components/ThemeToggle';
@@ -41,6 +43,12 @@ function getNavItems(): NavItem[] {
     { to: '/app/categories', labelKey: 'nav.categories', icon: Package, roles: ['SUPER_ADMIN', 'ADMIN'] },
     { to: '/app/stock', labelKey: 'nav.stock', icon: Warehouse, roles: ['SUPER_ADMIN', 'ADMIN'] },
     { to: '/app/distributions', labelKey: 'nav.distributions', icon: ClipboardList, roles: ['SUPER_ADMIN', 'ADMIN', 'DELIVERY'] },
+    {
+      to: '/app/delivery-by-area',
+      labelKey: 'nav.deliveryByArea',
+      icon: MapPin,
+      roles: ['SUPER_ADMIN', 'ADMIN', 'DELIVERY'],
+    },
     { to: '/app/weekly-tracking', labelKey: 'nav.weeklyTracking', icon: CalendarDays, roles: ['SUPER_ADMIN', 'ADMIN', 'DELIVERY'] },
     { to: '/app/users', labelKey: 'nav.users', icon: Shield, roles: ['SUPER_ADMIN'] },
     { to: '/app/audit', labelKey: 'nav.audit', icon: FileText, roles: ['SUPER_ADMIN', 'ADMIN'] },
@@ -89,10 +97,12 @@ export function ShellLayout() {
 
   const sidebarBody = (
     <>
-      <div className="flex h-16 shrink-0 items-center gap-2 border-b border-border px-4">
-        <div className="h-9 w-9 shrink-0 rounded-lg bg-primary/10" />
+      <div className="flex h-[4.25rem] shrink-0 items-center gap-3 border-b border-border/70 px-4">
+        <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-primary/[0.09] text-primary ring-1 ring-inset ring-primary/15">
+          <ClipboardList className="h-5 w-5 opacity-90" aria-hidden />
+        </div>
         <div className="min-w-0 flex-1">
-          <div className="truncate text-sm font-semibold">{t('brand.sidebar')}</div>
+          <div className="truncate text-sm font-semibold tracking-tight">{t('brand.sidebar')}</div>
           <div className="truncate text-xs text-muted-foreground">{user?.displayName}</div>
         </div>
         <Button
@@ -105,7 +115,7 @@ export function ShellLayout() {
           <X className="h-5 w-5" />
         </Button>
       </div>
-      <nav className="flex-1 space-y-1 overflow-y-auto p-3">
+      <nav className="flex-1 space-y-0.5 overflow-y-auto px-2 py-3">
         {items.map((it) => (
           <NavLink
             key={it.to}
@@ -115,18 +125,20 @@ export function ShellLayout() {
             }}
             className={({ isActive }) =>
               cn(
-                'flex items-center gap-2 rounded-lg px-3 py-2 text-sm transition',
-                isActive ? 'bg-primary text-primary-foreground' : 'hover:bg-muted',
+                'flex items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-medium transition-colors',
+                isActive
+                  ? 'bg-primary/[0.09] text-primary ring-1 ring-inset ring-primary/15'
+                  : 'text-muted-foreground hover:bg-muted/70 hover:text-foreground',
               )
             }
           >
-            <it.icon className="h-4 w-4 shrink-0" />
+            <it.icon className="h-[1.125rem] w-[1.125rem] shrink-0 opacity-90" />
             <span className="min-w-0 truncate">{t(it.labelKey)}</span>
           </NavLink>
         ))}
       </nav>
-      <div className="shrink-0 space-y-2 border-t border-border p-3">
-        <Button variant="outline" className="w-full" onClick={() => void logout()}>
+      <div className="shrink-0 border-t border-border/70 p-3">
+        <Button variant="ghost" className="w-full justify-start text-muted-foreground hover:text-foreground" onClick={() => void logout()}>
           <LogOut className="h-4 w-4 shrink-0" />
           <span className="truncate">{t('auth.logout')}</span>
         </Button>
@@ -135,7 +147,7 @@ export function ShellLayout() {
   );
 
   return (
-    <div className="min-h-screen min-w-0 bg-muted/40">
+    <div className="min-h-screen min-w-0 bg-background">
       {sidebarOpen ? (
         <button
           type="button"
@@ -148,7 +160,7 @@ export function ShellLayout() {
       <aside
         className={cn(
           // inline-start: left in LTR (English), right in RTL (Arabic)
-          'print:hidden fixed start-0 top-0 z-50 flex h-full w-[min(100vw,16rem)] flex-col border-e border-border bg-card shadow-lg transition-transform duration-200 ease-out md:z-40 md:w-64 md:shadow-sm',
+          'print:hidden fixed start-0 top-0 z-50 flex h-full w-[min(100vw,16rem)] flex-col border-e border-border/70 bg-card shadow-[4px_0_24px_-8px_rgba(15,23,42,0.08)] transition-transform duration-200 ease-out md:z-40 md:w-64 md:shadow-soft dark:shadow-none',
           sidebarOpen ? 'translate-x-0' : 'ltr:-translate-x-full rtl:translate-x-full',
           !sidebarOpen && 'pointer-events-none',
         )}
@@ -157,7 +169,7 @@ export function ShellLayout() {
       </aside>
 
       <div className={cn('min-w-0 transition-[margin] duration-200 ease-out', sidebarOpen && 'md:ms-64')}>
-        <header className="print:hidden sticky top-0 z-30 flex h-16 items-center gap-2 border-b border-border bg-card/80 px-3 backdrop-blur sm:px-4">
+        <header className="print:hidden sticky top-0 z-30 flex h-[4.25rem] items-center gap-3 border-b border-border/70 bg-card/90 px-3 shadow-soft backdrop-blur-md supports-[backdrop-filter]:bg-card/75 sm:px-5">
           <Button
             type="button"
             variant="ghost"
@@ -168,16 +180,16 @@ export function ShellLayout() {
           >
             {sidebarOpen ? <X className="h-5 w-5" /> : <Menu className="h-5 w-5" />}
           </Button>
-          <div className="min-w-0 flex-1 truncate text-sm text-muted-foreground">{t('brand.header')}</div>
-          <div className="flex shrink-0 items-center gap-2">
+          <div className="min-w-0 flex-1 truncate text-sm font-medium text-muted-foreground">{t('brand.header')}</div>
+          <div className="flex shrink-0 items-center gap-2 sm:gap-3">
             <ThemeToggle />
             <LanguageSwitcher />
-            <span className="hidden max-w-[10rem] truncate text-xs text-muted-foreground sm:inline">
+            <Badge variant="neutral" className="hidden max-w-[11rem] truncate font-normal sm:inline-flex">
               {user?.roleCode}
-            </span>
+            </Badge>
           </div>
         </header>
-        <main className="mx-auto max-w-7xl min-w-0 p-3 sm:p-4 md:p-6">
+        <main className="mx-auto max-w-7xl min-w-0 px-4 py-6 sm:px-6 sm:py-8 md:px-8">
           <Outlet />
         </main>
       </div>

@@ -1,3 +1,4 @@
+import { BeneficiaryDuplicateWarnings } from '@/components/BeneficiaryDuplicateWarnings';
 import { Card, CardDescription, CardTitle } from '@/components/ui/card';
 import { BeneficiaryItemNeedsFields } from '@/components/BeneficiaryItemNeedsFields';
 import { BeneficiaryStatusBadge, DistributionStatusBadge } from '@/components/StatusBadge';
@@ -13,6 +14,7 @@ import {
   type ItemFieldRowState,
 } from '@/lib/beneficiaryItemNeeds';
 import { applyFoodRationsCookingGate } from '@/lib/foodRationsCategory';
+import { useBeneficiaryDuplicateCheck } from '@/hooks/useBeneficiaryDuplicateCheck';
 import { api } from '@/lib/api';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useParams } from 'react-router-dom';
@@ -133,6 +135,21 @@ export function BeneficiaryDetailPage() {
   const [editing, setEditing] = useState(false);
   const [editDraft, setEditDraft] = useState<EditDraft | null>(null);
   const [showNotNeeded, setShowNotNeeded] = useState(false);
+  const [phoneDuplicateAck, setPhoneDuplicateAck] = useState(false);
+
+  const duplicateFields = useMemo(() => {
+    if (!editing || !editDraft) {
+      return { fullName: '', phone: '', area: '', street: '' };
+    }
+    return {
+      fullName: editDraft.fullName,
+      phone: editDraft.phone,
+      area: editDraft.area,
+      street: editDraft.street,
+    };
+  }, [editing, editDraft]);
+
+  const duplicateCheck = useBeneficiaryDuplicateCheck(duplicateFields, id);
 
   const catRows = useMemo(() => normalizeAidCategoriesForForm(categories), [categories]);
 
@@ -158,8 +175,10 @@ export function BeneficiaryDetailPage() {
     if (editing) {
       setEditing(false);
       setEditDraft(null);
+      setPhoneDuplicateAck(false);
       return;
     }
+    setPhoneDuplicateAck(false);
     if (data && categories !== undefined) {
       setEditDraft(buildEditDraft(data, catRows));
     }
@@ -217,6 +236,10 @@ export function BeneficiaryDetailPage() {
 
   function validateEdit(): boolean {
     if (!editDraft) return false;
+    if (duplicateCheck.data?.hasExactPhoneDuplicate && !phoneDuplicateAck) {
+      toast.error(t('beneficiaryDuplicate.mustAcknowledgePhone'));
+      return false;
+    }
     if (!editDraft.fullName.trim()) {
       toast.error(t('beneficiaryNew.validationFullName'));
       return false;
@@ -339,11 +362,12 @@ export function BeneficiaryDetailPage() {
                     className="w-full tabular-nums"
                     placeholder="12345678"
                     value={editDraft.phone}
-                    onChange={(e) =>
+                    onChange={(e) => {
+                      setPhoneDuplicateAck(false);
                       setEditDraft((d) =>
                         d ? { ...d, phone: sanitizeLebaneseLocalPhoneInput(e.target.value) } : d,
-                      )
-                    }
+                      );
+                    }}
                   />
                 </div>
                 <div className="min-w-0 space-y-2">
@@ -416,6 +440,13 @@ export function BeneficiaryDetailPage() {
                   placeholder={t('beneficiaryNew.streetPlaceholder')}
                 />
               </div>
+              <BeneficiaryDuplicateWarnings
+                result={duplicateCheck.data}
+                isLoading={duplicateCheck.isLoading}
+                isFetching={duplicateCheck.isFetching}
+                phoneDuplicateAcknowledged={phoneDuplicateAck}
+                onPhoneDuplicateAcknowledgedChange={setPhoneDuplicateAck}
+              />
             </div>
             <div className="space-y-3 border-t border-border pt-4">
               <div className="font-medium">{t('beneficiaryNew.needsTitle')}</div>
@@ -477,7 +508,14 @@ export function BeneficiaryDetailPage() {
               >
                 {t('common.cancel')}
               </Button>
-              <Button type="button" disabled={updateMutation.isPending} onClick={() => saveEdit()}>
+              <Button
+                type="button"
+                disabled={
+                  updateMutation.isPending ||
+                  Boolean(duplicateCheck.data?.hasExactPhoneDuplicate && !phoneDuplicateAck)
+                }
+                onClick={() => saveEdit()}
+              >
                 {updateMutation.isPending ? t('common.saving') : t('common.save')}
               </Button>
             </div>

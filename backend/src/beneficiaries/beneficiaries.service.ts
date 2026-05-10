@@ -17,6 +17,14 @@ import { CreateBeneficiaryDto } from './dto/create-beneficiary.dto';
 import { UpdateBeneficiaryDto } from './dto/update-beneficiary.dto';
 import { isAllowedBeneficiaryArea } from './constants/beneficiary-areas';
 import { LEBANESE_LOCAL_PHONE_REGEX } from './constants/lebanese-phone';
+import type { DuplicateMatchReason } from './constants/duplicate-beneficiary';
+import {
+  areasEqualCaseInsensitive,
+  namesSimilar,
+  sortDuplicateMatches,
+  streetSearchToken,
+  streetsSimilar,
+} from './constants/duplicate-beneficiary';
 import { isFoodRationsCategoryName } from './constants/food-rations-category';
 import {
   beneficiaryStatusSortRank,
@@ -504,6 +512,179 @@ export class BeneficiariesService {
     });
     if (!b) throw new NotFoundException();
     return this.withStreetSerialized(this.withItemNeedsGrouped(b));
+  }
+
+  /**
+   * Delivered distributions in the last `days` window, aggregated per aid category (latest delivery per category).
+   */
+  async getRecentAid(
+    id: string,
+    query: { days?: string; categoryIds?: string },
+  ) {
+    await this.ensure(id);
+
+    const rawDays = query.days?.trim();
+    const parsed =
+      rawDays !== undefined && rawDays !== ''
+        ? Number.parseInt(rawDays, 10)
+        : 7;
+    const days = Number.isFinite(parsed)
+      ? Math.min(Math.max(parsed, 1), 365)
+      : 7;
+
+    const filterCatIds = new Set(
+      (query.categoryIds?.split(',') ?? [])
+        .map((s) => s.trim())
+        .filter(Boolean),
+    );
+
+    const cutoff = new Date(Date.now() - days * 86_400_000);
+
+    const records = await this.prisma.distributionRecord.findMany({
+      where: {
+        beneficiaryId: id,
+        status: DistributionStatus.DELIVERED,
+        OR: [
+          { deliveredAt: { gte: cutoff } },
+          {
+            AND: [{ deliveredAt: null }, { updatedAt: { gte: cutoff } }],
+          },
+        ],
+      },
+      include: {
+        items: {
+          include: {
+            aidCategory: { select: { id: true, name: true } },
+            aidCategoryItem: { select: { id: true, name: true } },
+          },
+        },
+      },
+      orderBy: [{ deliveredAt: 'desc' }, { updatedAt: 'desc' }],
+    });
+
+    type Rec = (typeof records)[number];
+    type Agg = { lastAt: Date; record: Rec };
+
+    const byCategory = new Map<string, Agg>();
+
+    for (const r of records) {
+      const t = r.deliveredAt ?? r.updatedAt;
+      if (t < cutoff) continue;
+      for (const line of r.items) {
+        const cid = line.aidCategoryId;
+        if (filterCatIds.size > 0 && !filterCatIds.has(cid)) continue;
+        const prev = byCategory.get(cid);
+        if (!prev || t > prev.lastAt) {
+          byCategory.set(cid, { lastAt: t, record: r });
+        }
+      }
+    }
+
+    const categories = [...byCategory.entries()]
+      .map(([aidCategoryId, { lastAt, record }]) => {
+        const lines = record.items.filter((l) => l.aidCategoryId === aidCategoryId);
+        const name = lines[0]?.aidCategory?.name ?? '';
+        return {
+          aidCategoryId,
+          aidCategoryName: name,
+          lastDeliveredAt: lastAt.toISOString(),
+          deliveredItems: lines.map((l) => ({
+            aidCategoryItemId: l.aidCategoryItemId,
+            itemName: l.aidCategoryItem?.name ?? '',
+            quantityDelivered: l.quantityDelivered,
+          })),
+        };
+      })
+      .sort((a, b) => a.aidCategoryName.localeCompare(b.aidCategoryName));
+
+    return {
+      days,
+      since: cutoff.toISOString(),
+      categories,
+    };
+  }
+
+  /**
+   * Category-level + item-level needs only (no distributions/timeline) for distribution workflow.
+   */
+  async getNeedsSummary(id: string) {
+    await this.ensure(id);
+
+    const [categoryNeeds, itemNeeds] = await Promise.all([
+      this.prisma.beneficiaryCategory.findMany({
+        where: { beneficiaryId: id },
+        include: {
+          category: { select: { id: true, name: true } },
+        },
+      }),
+      this.prisma.beneficiaryItemNeed.findMany({
+        where: { beneficiaryId: id, needed: true },
+        include: {
+          aidCategoryItem: {
+            select: {
+              id: true,
+              name: true,
+              aidCategory: { select: { id: true, name: true } },
+            },
+          },
+        },
+      }),
+    ]);
+
+    const catIncluded = categoryNeeds.filter((bc) => {
+      const q = bc.quantity ?? 0;
+      const note = bc.notes?.trim() ?? '';
+      return q >= 1 || note.length > 0;
+    });
+
+    const itemIncluded = itemNeeds.filter((it) => {
+      const q = it.quantity ?? 0;
+      const note = it.notes?.trim() ?? '';
+      return q >= 1 || note.length > 0;
+    });
+
+    const needs: Array<{
+      aidCategoryId: string;
+      aidCategoryName: string;
+      itemId: string | null;
+      itemName: string | null;
+      quantity: number;
+      notes: string | null;
+    }> = [];
+
+    for (const bc of catIncluded) {
+      needs.push({
+        aidCategoryId: bc.categoryId,
+        aidCategoryName: bc.category.name,
+        itemId: null,
+        itemName: null,
+        quantity: Math.max(0, bc.quantity ?? 0),
+        notes: bc.notes?.trim() ? bc.notes.trim() : null,
+      });
+    }
+
+    for (const it of itemIncluded) {
+      const item = it.aidCategoryItem;
+      const cat = item.aidCategory;
+      needs.push({
+        aidCategoryId: cat.id,
+        aidCategoryName: cat.name,
+        itemId: item.id,
+        itemName: item.name,
+        quantity: Math.max(0, it.quantity ?? 0),
+        notes: it.notes?.trim() ? it.notes.trim() : null,
+      });
+    }
+
+    needs.sort((a, b) => {
+      const byCat = a.aidCategoryName.localeCompare(b.aidCategoryName);
+      if (byCat !== 0) return byCat;
+      const ai = a.itemName ?? '';
+      const bi = b.itemName ?? '';
+      return ai.localeCompare(bi);
+    });
+
+    return { needs };
   }
 
   async create(actorId: string, dto: CreateBeneficiaryDto) {
@@ -1059,6 +1240,133 @@ export class BeneficiariesService {
     const d = it.quantityDelivered ?? 0;
     if (d > 0) return d;
     return it.quantityPlanned ?? 0;
+  }
+
+  async duplicateCheck(params: {
+    fullName?: string;
+    phone?: string;
+    area?: string;
+    street?: string;
+    excludeId?: string;
+  }): Promise<{
+    matches: Array<{
+      id: string;
+      fullName: string;
+      phone: string;
+      area: string | null;
+      street: string | null;
+      status: BeneficiaryStatus;
+      matchReasons: DuplicateMatchReason[];
+    }>;
+    hasExactPhoneDuplicate: boolean;
+  }> {
+    const excludeId = params.excludeId?.trim();
+    const baseWhere: Prisma.BeneficiaryWhereInput = {
+      deletedAt: null,
+      ...(excludeId ? { id: { not: excludeId } } : {}),
+    };
+
+    const select = {
+      id: true,
+      fullName: true,
+      phone: true,
+      area: true,
+      addressLine: true,
+      status: true,
+    } as const;
+
+    type DupRow = Prisma.BeneficiaryGetPayload<{ select: typeof select }>;
+    const acc = new Map<string, { row: DupRow; reasons: Set<DuplicateMatchReason> }>();
+
+    const add = (row: DupRow, reason: DuplicateMatchReason) => {
+      const prev = acc.get(row.id);
+      if (prev) {
+        prev.reasons.add(reason);
+      } else {
+        acc.set(row.id, { row, reasons: new Set([reason]) });
+      }
+    };
+
+    const phoneDigits = params.phone?.trim() ?? '';
+    if (phoneDigits.length > 0 && LEBANESE_LOCAL_PHONE_REGEX.test(phoneDigits)) {
+      const byPhone = await this.prisma.beneficiary.findMany({
+        where: { ...baseWhere, phone: phoneDigits },
+        select,
+        take: 10,
+      });
+      for (const row of byPhone) {
+        add(row, 'PHONE_EXACT');
+      }
+    }
+
+    const fullNameTrim = params.fullName?.trim() ?? '';
+    const areaTrim = params.area?.trim() ?? '';
+    const streetTrim = params.street?.trim() ?? '';
+
+    if (fullNameTrim.length >= 2 && areaTrim.length > 0 && isAllowedBeneficiaryArea(areaTrim)) {
+      const inArea = await this.prisma.beneficiary.findMany({
+        where: {
+          ...baseWhere,
+          area: { equals: areaTrim, mode: 'insensitive' },
+        },
+        select,
+        take: 150,
+      });
+      for (const row of inArea) {
+        if (namesSimilar(fullNameTrim, row.fullName)) {
+          add(row, 'NAME_AREA_SIMILAR');
+        }
+      }
+    }
+
+    if (fullNameTrim.length >= 2 && streetTrim.length >= 3) {
+      const token = streetSearchToken(streetTrim);
+      if (token) {
+        const streetWhere: Prisma.BeneficiaryWhereInput = {
+          ...baseWhere,
+          addressLine: { contains: token, mode: 'insensitive' },
+        };
+        if (areaTrim.length > 0 && isAllowedBeneficiaryArea(areaTrim)) {
+          streetWhere.area = { equals: areaTrim, mode: 'insensitive' };
+        }
+
+        const streetCandidates = await this.prisma.beneficiary.findMany({
+          where: streetWhere,
+          select,
+          take: 80,
+        });
+
+        for (const row of streetCandidates) {
+          const addr = row.addressLine ?? '';
+          if (!namesSimilar(fullNameTrim, row.fullName) || !streetsSimilar(streetTrim, addr)) {
+            continue;
+          }
+          if (areaTrim.length > 0 && isAllowedBeneficiaryArea(areaTrim)) {
+            if (!row.area || !areasEqualCaseInsensitive(areaTrim, row.area)) {
+              continue;
+            }
+          }
+          add(row, 'NAME_STREET_SIMILAR');
+        }
+      }
+    }
+
+    const merged = [...acc.values()].map(({ row, reasons }) => ({
+      id: row.id,
+      fullName: row.fullName,
+      phone: row.phone,
+      area: row.area,
+      street: row.addressLine ?? null,
+      status: row.status,
+      matchReasons: [...reasons],
+    }));
+
+    const hasExactPhoneDuplicate = merged.some((m) =>
+      m.matchReasons.includes('PHONE_EXACT'),
+    );
+    const sorted = sortDuplicateMatches(merged, 10);
+
+    return { matches: sorted, hasExactPhoneDuplicate };
   }
 
   async exportCsv() {

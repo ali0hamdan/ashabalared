@@ -178,6 +178,7 @@ export function DistributionsPage() {
       setDeliverId(null);
       setProof('');
       await qc.invalidateQueries({ queryKey: ['distributions'] });
+      await qc.invalidateQueries({ queryKey: ['distributions', 'by-area'] });
       await qc.invalidateQueries({ queryKey: ['dashboard-summary'] });
       await qc.invalidateQueries({ queryKey: ['stock'] });
       await qc.invalidateQueries({ queryKey: ['beneficiaries-history'] });
@@ -196,6 +197,7 @@ export function DistributionsPage() {
       setAssignDistId(null);
       setAssignDriverId('');
       await qc.invalidateQueries({ queryKey: ['distributions'] });
+      await qc.invalidateQueries({ queryKey: ['distributions', 'by-area'] });
       await qc.invalidateQueries({ queryKey: ['dashboard-summary'] });
     } catch (e: unknown) {
       toast.error(
@@ -211,6 +213,7 @@ export function DistributionsPage() {
       toast.success(t('distributions.cancelSuccess'));
       setCancelId(null);
       await qc.invalidateQueries({ queryKey: ['distributions'] });
+      await qc.invalidateQueries({ queryKey: ['distributions', 'by-area'] });
     } catch (e: unknown) {
       toast.error(
         (e as { response?: { data?: { message?: string } } })?.response?.data?.message ?? t('common.updateError'),
@@ -226,6 +229,7 @@ export function DistributionsPage() {
       toast.success(t('distributions.deleteSuccess'));
       setDeleteId(null);
       await qc.invalidateQueries({ queryKey: ['distributions'] });
+      await qc.invalidateQueries({ queryKey: ['distributions', 'by-area'] });
     } catch (e: unknown) {
       const blocked = parseDeleteBlocked(e);
       if (blocked && role === 'SUPER_ADMIN') {
@@ -261,6 +265,7 @@ export function DistributionsPage() {
       setForceDistConfirm('');
       setForceDistReason('');
       await qc.invalidateQueries({ queryKey: ['distributions'] });
+      await qc.invalidateQueries({ queryKey: ['distributions', 'by-area'] });
       await qc.invalidateQueries({ queryKey: ['dashboard-summary'] });
     } catch (e: unknown) {
       const fb = parseForceDeleteForbidden(e);
@@ -278,7 +283,15 @@ export function DistributionsPage() {
     <div className="space-y-4">
       <div className="flex flex-col gap-2 md:flex-row md:items-end md:justify-between">
         <div>
-          <h1 className="text-2xl font-bold">{t('distributions.title')}</h1>
+          <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
+            <h1 className="text-2xl font-bold">{t('distributions.title')}</h1>
+            <Link
+              to="/app/delivery-by-area"
+              className="text-sm font-medium text-primary hover:underline"
+            >
+              {t('deliveryByArea.shortcut')}
+            </Link>
+          </div>
           <p className="text-sm text-muted-foreground">{t('distributions.subtitle')}</p>
         </div>
         <div className="flex w-full min-w-0 flex-wrap items-stretch gap-2 md:ms-auto md:w-auto md:max-w-full md:justify-end">

@@ -134,7 +134,9 @@ export function WeeklyTrackingPage() {
   }, [searchInput]);
 
   useEffect(() => {
-    setPage(1);
+    queueMicrotask(() => {
+      setPage(1);
+    });
   }, [categoryTab, searchDebounced, statusFilter, dateFrom, dateTo, driverId]);
 
   const { data: categories } = useQuery({
@@ -208,18 +210,18 @@ export function WeeklyTrackingPage() {
   }
 
   return (
-    <div className="space-y-4">
-      <div className="flex flex-wrap items-start gap-3">
-        <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-lg bg-primary/10 text-primary">
+    <div className="space-y-8">
+      <div className="flex flex-wrap items-start gap-4">
+        <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl bg-primary/[0.09] text-primary ring-1 ring-inset ring-primary/15">
           <CalendarDays className="h-6 w-6" aria-hidden />
         </div>
-        <div>
-          <h1 className="text-2xl font-bold">{t('weeklyTracking.title')}</h1>
-          <p className="text-sm text-muted-foreground">{t('weeklyTracking.subtitle')}</p>
+        <div className="min-w-0 flex-1 space-y-1 border-b border-border/60 pb-6">
+          <h1 className="text-2xl font-semibold tracking-tight">{t('weeklyTracking.title')}</h1>
+          <p className="text-sm leading-relaxed text-muted-foreground">{t('weeklyTracking.subtitle')}</p>
         </div>
       </div>
 
-      <Card className="space-y-4 p-4 sm:p-6">
+      <Card className="space-y-5 p-5 sm:p-6">
         <div className="flex flex-col gap-3">
           <Label className="text-sm font-medium">{t('weeklyTracking.categoryTabs')}</Label>
           <div className="flex flex-wrap gap-2">
@@ -259,7 +261,7 @@ export function WeeklyTrackingPage() {
           <div className="space-y-2">
             <Label>{t('weeklyTracking.statusFilter')}</Label>
             <select
-              className="h-10 w-full rounded-md border border-border bg-card px-3 text-sm"
+              className="form-select"
               value={statusFilter}
               onChange={(e) => setStatusFilter(e.target.value)}
             >
@@ -273,7 +275,7 @@ export function WeeklyTrackingPage() {
             <div className="space-y-2">
               <Label>{t('weeklyTracking.driverFilter')}</Label>
               <select
-                className="h-10 w-full rounded-md border border-border bg-card px-3 text-sm"
+                className="form-select"
                 value={driverId}
                 onChange={(e) => setDriverId(e.target.value)}
               >

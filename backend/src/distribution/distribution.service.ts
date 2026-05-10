@@ -113,6 +113,11 @@ const distributionListSelect = {
   completedBy: { select: { id: true, displayName: true, username: true } },
 } satisfies Prisma.DistributionRecordSelect;
 
+const distributionByAreaSelect = {
+  ...distributionListSelect,
+  outForDeliveryAt: true,
+} satisfies Prisma.DistributionRecordSelect;
+
 const distInclude = {
   beneficiary: { include: { region: true } },
 
@@ -255,8 +260,32 @@ export class DistributionService {
       | undefined;
 
     if (q) {
-      const iq = q;
-      where.OR = [
+      Object.assign(where, this.distributionSearchOr(q));
+    }
+
+    const { page, limit, skip } = parsePaginationQuery({
+      page: query.page,
+      limit: query.limit,
+    });
+
+    const [total, rows] = await Promise.all([
+      this.prisma.distributionRecord.count({ where }),
+      this.prisma.distributionRecord.findMany({
+        where,
+        orderBy: { createdAt: 'desc' },
+        skip,
+        take: limit,
+        select: distributionListSelect,
+      }),
+    ]);
+
+    return buildPaginatedResult(rows, total, page, limit);
+  }
+
+  private distributionSearchOr(q: string): Prisma.DistributionRecordWhereInput {
+    const iq = q;
+    return {
+      OR: [
         { beneficiary: { fullName: { contains: iq, mode: 'insensitive' } } },
         { beneficiary: { phone: { contains: iq, mode: 'insensitive' } } },
         { beneficiary: { area: { contains: iq, mode: 'insensitive' } } },
@@ -315,26 +344,129 @@ export class DistributionService {
             },
           },
         },
-      ];
-    }
+      ],
+    };
+  }
 
-    const { page, limit, skip } = parsePaginationQuery({
-      page: query.page,
-      limit: query.limit,
+  /**
+   * Active beneficiaries only; grouped by beneficiary area (fallback: region name, then “no area”).
+   * Default status scope: PENDING + ASSIGNED (route planning). Pass status=ALL for no status filter.
+   */
+  async listByArea(
+    actor: { userId: string; roleCode: RoleCode },
+    query: {
+      status?: string;
+      driverId?: string;
+      area?: string;
+      q?: string;
+      search?: string;
+    },
+  ): Promise<{
+    areas: Array<{
+      areaKey: string;
+      areaLabel: string;
+      distributionCount: number;
+      beneficiaryCount: number;
+      distributions: Prisma.DistributionRecordGetPayload<{
+        select: typeof distributionByAreaSelect;
+      }>[];
+    }>;
+    total: number;
+  }> {
+    const MAX_ROWS = 2000;
+
+    const andParts: Prisma.DistributionRecordWhereInput[] = [];
+
+    const areaTrim = query.area?.trim();
+    andParts.push({
+      beneficiary: {
+        is: {
+          deletedAt: null,
+          status: BeneficiaryStatus.ACTIVE,
+          ...(areaTrim
+            ? { area: { contains: areaTrim, mode: 'insensitive' } }
+            : {}),
+        },
+      },
     });
 
-    const [total, rows] = await Promise.all([
-      this.prisma.distributionRecord.count({ where }),
-      this.prisma.distributionRecord.findMany({
-        where,
-        orderBy: { createdAt: 'desc' },
-        skip,
-        take: limit,
-        select: distributionListSelect,
-      }),
-    ]);
+    if (actor.roleCode === RoleCode.DELIVERY) {
+      andParts.push({ driverId: actor.userId });
+    } else if (query.driverId?.trim()) {
+      andParts.push({ driverId: query.driverId.trim() });
+    }
 
-    return buildPaginatedResult(rows, total, page, limit);
+    const rawStatus = query.status?.trim();
+    if (!rawStatus) {
+      andParts.push({
+        status: {
+          in: [DistributionStatus.PENDING, DistributionStatus.ASSIGNED],
+        },
+      });
+    } else if (rawStatus.toUpperCase() !== 'ALL') {
+      const st = this.normalizeDistributionStatus(rawStatus);
+      andParts.push({ status: st });
+    }
+
+    const q = (query.q?.trim() || query.search?.trim() || undefined) as
+      | string
+      | undefined;
+    if (q) {
+      andParts.push(this.distributionSearchOr(q));
+    }
+
+    const where: Prisma.DistributionRecordWhereInput = { AND: andParts };
+
+    const rows = await this.prisma.distributionRecord.findMany({
+      where,
+      orderBy: { createdAt: 'desc' },
+      take: MAX_ROWS,
+      select: distributionByAreaSelect,
+    });
+
+    type Row = (typeof rows)[number];
+    const groups = new Map<
+      string,
+      { label: string; rows: Row[] }
+    >();
+
+    for (const row of rows) {
+      const b = row.beneficiary;
+      const areaFromField = (b.area ?? '').trim();
+      const regionAr = (b.region?.nameAr ?? '').trim();
+      const label =
+        areaFromField || regionAr || '(No area)';
+      const key =
+        areaFromField || regionAr || '__NONE__';
+      let g = groups.get(key);
+      if (!g) {
+        g = { label, rows: [] };
+        groups.set(key, g);
+      }
+      g.rows.push(row);
+    }
+
+    const sortedKeys = [...groups.keys()].sort((a, b) => {
+      if (a === '__NONE__') return 1;
+      if (b === '__NONE__') return -1;
+      const la = groups.get(a)!.label;
+      const lb = groups.get(b)!.label;
+      return la.localeCompare(lb);
+    });
+
+    const areas = sortedKeys.map((k) => {
+      const g = groups.get(k)!;
+      const ben = new Set(g.rows.map((r) => r.beneficiaryId));
+      return {
+        areaKey: k,
+        areaLabel: g.label,
+        distributionCount: g.rows.length,
+        beneficiaryCount: ben.size,
+        distributions: g.rows,
+      };
+    });
+
+    return { areas, total: rows.length };
   }
 
   /**

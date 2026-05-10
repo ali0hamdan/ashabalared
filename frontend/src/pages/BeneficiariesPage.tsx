@@ -14,6 +14,9 @@ import { useTranslation } from 'react-i18next';
 import { useAuthStore } from '@/store/auth';
 import { parseDeleteBlocked, type DeleteBlockedPayload } from '@/lib/deleteBlocked';
 import { AdminForceDeletePanel } from '@/components/AdminForceDeletePanel';
+import { DataTableShell } from '@/components/layout/DataTableShell';
+import { EmptyState } from '@/components/layout/EmptyState';
+import { PageHeader } from '@/components/layout/PageHeader';
 import { PaginationControls } from '@/components/pagination-controls';
 import { BeneficiariesTableSkeleton } from '@/components/table-skeletons';
 
@@ -168,53 +171,76 @@ export function BeneficiariesPage() {
   }
 
   return (
-    <div className="space-y-4">
-      <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
-        <div>
-          <h1 className="text-2xl font-bold">{t('beneficiaries.title')}</h1>
-          <p className="text-sm text-muted-foreground">{t('beneficiaries.subtitle')}</p>
-        </div>
-        <div className="flex w-full flex-wrap gap-2 md:w-auto md:justify-end">
-          <Button variant="outline" type="button" className="h-10 min-w-[10rem] flex-1 sm:flex-initial" onClick={() => void exportCsv()}>
-            {t('beneficiaries.exportCsv')}
-          </Button>
-          <Link
-            to="/app/beneficiaries/new"
-            className={cn(
-              'inline-flex h-10 min-w-[10rem] flex-1 items-center justify-center rounded-md bg-primary px-4 text-sm font-medium text-primary-foreground shadow-sm hover:opacity-95 sm:flex-initial',
-            )}
-          >
-            {t('beneficiaries.add')}
-          </Link>
-        </div>
-      </div>
+    <div className="space-y-8">
+      <PageHeader
+        title={t('beneficiaries.title')}
+        description={t('beneficiaries.subtitle')}
+        actions={
+          <>
+            <Button variant="outline" type="button" className="min-h-10 min-w-[10rem] flex-1 sm:flex-initial" onClick={() => void exportCsv()}>
+              {t('beneficiaries.exportCsv')}
+            </Button>
+            <Link
+              to="/app/beneficiaries/new"
+              className={cn(
+                'inline-flex min-h-10 min-w-[10rem] flex-1 items-center justify-center rounded-lg bg-primary px-4 text-sm font-medium text-primary-foreground shadow-soft transition-colors hover:bg-primary/92 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/35 focus-visible:ring-offset-2 focus-visible:ring-offset-background sm:flex-initial',
+              )}
+            >
+              {t('beneficiaries.add')}
+            </Link>
+          </>
+        }
+      />
 
-      <Card className="p-4">
-        <div className="flex flex-col gap-2 sm:flex-row sm:items-stretch">
+      <Card className="p-4 sm:p-5">
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-stretch">
           <Input
-            className="min-h-10 w-full flex-1"
+            className="w-full flex-1"
             placeholder={t('beneficiaries.searchPlaceholder')}
             value={searchInput}
             onChange={(e) => setSearchInput(e.target.value)}
           />
-          <Button type="button" variant="outline" className="h-10 shrink-0 sm:min-w-[7.5rem]" onClick={() => void refetch()}>
+          <Button type="button" variant="outline" className="min-h-11 shrink-0 sm:min-w-[7.5rem]" onClick={() => void refetch()}>
             {t('common.apply')}
           </Button>
         </div>
       </Card>
 
-      <Card
-        className={cn(
-          'max-w-full overflow-x-auto p-0',
-          isPlaceholderData && isFetching && 'opacity-[0.92] transition-opacity',
-        )}
+      <DataTableShell
+        className={cn(isPlaceholderData && isFetching && 'opacity-[0.94] transition-opacity')}
+        footer={
+          data && totalPages > 1 ? (
+            <PaginationControls
+              page={page}
+              totalPages={totalPages}
+              isFetching={isFetching && !showInitialSkeleton}
+              summary={t('beneficiaries.pagingSummary', {
+                page,
+                totalPages,
+                total,
+              })}
+              prevLabel={t('beneficiaries.pagingPrev')}
+              nextLabel={t('beneficiaries.pagingNext')}
+              onPrev={() => setPage((p) => Math.max(1, p - 1))}
+              onNext={() => setPage((p) => p + 1)}
+              className="border-t-0 px-4 py-3"
+            />
+          ) : undefined
+        }
       >
         {showInitialSkeleton ? (
           <div className="p-0" aria-busy={true} aria-label={t('common.loading')}>
             <BeneficiariesTableSkeleton rows={10} />
           </div>
         ) : rows.length === 0 ? (
-          <div className="p-10 text-center text-sm text-muted-foreground">{t('common.noResults')}</div>
+          <EmptyState title={t('common.noResults')} description={t('beneficiaries.subtitle')}>
+            <Link
+              to="/app/beneficiaries/new"
+              className="inline-flex min-h-10 items-center justify-center rounded-lg bg-primary px-4 text-sm font-medium text-primary-foreground shadow-soft transition-colors hover:bg-primary/92 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/35 focus-visible:ring-offset-2 focus-visible:ring-offset-background"
+            >
+              {t('beneficiaries.add')}
+            </Link>
+          </EmptyState>
         ) : (
           <table className="w-full min-w-[1040px] table-fixed border-separate border-spacing-0 text-sm">
             <colgroup>
@@ -227,30 +253,30 @@ export function BeneficiariesPage() {
               <col className="w-[9%]" />
               <col className="w-[13%]" />
             </colgroup>
-            <thead>
-              <tr className="border-b border-border bg-muted/40">
-                <th scope="col" className="border-e border-border px-3 py-2.5 text-start font-medium text-foreground">
+            <thead className="data-table-head">
+              <tr>
+                <th scope="col" className="data-table-th border-e border-border/50">
                   {t('beneficiaries.colName')}
                 </th>
-                <th scope="col" className="border-e border-border px-3 py-2.5 text-start font-medium text-foreground">
+                <th scope="col" className="data-table-th border-e border-border/50">
                   {t('beneficiaries.colPhone')}
                 </th>
-                <th scope="col" className="border-e border-border px-3 py-2.5 text-start font-medium text-foreground">
+                <th scope="col" className="data-table-th border-e border-border/50">
                   {t('beneficiaries.colArea')}
                 </th>
-                <th scope="col" className="border-e border-border px-3 py-2.5 text-start font-medium text-foreground">
+                <th scope="col" className="data-table-th border-e border-border/50">
                   {t('beneficiaries.colNeeds')}
                 </th>
-                <th scope="col" className="border-e border-border px-3 py-2.5 text-start font-medium text-foreground">
+                <th scope="col" className="data-table-th border-e border-border/50">
                   {t('beneficiaries.colFamily')}
                 </th>
-                <th scope="col" className="border-e border-border px-3 py-2.5 text-start font-medium text-foreground">
+                <th scope="col" className="data-table-th border-e border-border/50">
                   {t('beneficiaries.colStatus')}
                 </th>
-                <th scope="col" className="border-e border-border px-3 py-2.5 text-start font-medium text-foreground">
+                <th scope="col" className="data-table-th border-e border-border/50">
                   {t('beneficiaries.colDistributions')}
                 </th>
-                <th scope="col" className="px-3 py-2.5 text-start font-medium text-foreground">
+                <th scope="col" className="data-table-th">
                   {t('beneficiaries.colActions')}
                 </th>
               </tr>
@@ -260,22 +286,18 @@ export function BeneficiariesPage() {
                 <tr
                   key={b.id}
                   className={cn(
-                    'border-b border-border hover:bg-muted/30',
-                    b.status === 'INACTIVE' && 'bg-muted/25 text-muted-foreground',
+                    'data-table-row border-b border-border/60',
+                    b.status === 'INACTIVE' && 'bg-muted/30 text-muted-foreground',
                   )}
                 >
-                  <td className="border-e border-border px-3 py-2.5 align-middle text-start break-words">
-                    <Link className="font-medium text-primary hover:underline" to={`/app/beneficiaries/${b.id}`}>
+                  <td className="data-table-td border-e border-border/40 break-words">
+                    <Link className="font-medium text-primary underline-offset-4 hover:underline" to={`/app/beneficiaries/${b.id}`}>
                       {b.fullName}
                     </Link>
                   </td>
-                  <td className="border-e border-border px-3 py-2.5 align-middle text-start break-words tabular-nums">
-                    {b.phone}
-                  </td>
-                  <td className="border-e border-border px-3 py-2.5 align-middle text-start break-words">
-                    {b.area?.trim() ? b.area : t('common.dash')}
-                  </td>
-                  <td className="border-e border-border px-3 py-2.5 align-top text-start">
+                  <td className="data-table-td border-e border-border/40 break-words tabular-nums">{b.phone}</td>
+                  <td className="data-table-td border-e border-border/40 break-words">{b.area?.trim() ? b.area : t('common.dash')}</td>
+                  <td className="data-table-td border-e border-border/40 align-top">
                     {(() => {
                       const labels = beneficiaryNeedChipLabels(b);
                       if (!labels.length) {
@@ -302,14 +324,14 @@ export function BeneficiariesPage() {
                       );
                     })()}
                   </td>
-                  <td className="border-e border-border px-3 py-2.5 align-middle text-start tabular-nums">{b.familyCount}</td>
-                  <td className="border-e border-border px-3 py-2.5 align-middle text-start">
+                  <td className="data-table-td border-e border-border/40 tabular-nums">{b.familyCount}</td>
+                  <td className="data-table-td border-e border-border/40">
                     <span className="inline-flex">
                       <BeneficiaryStatusBadge status={b.status} />
                     </span>
                   </td>
-                  <td className="border-e border-border px-3 py-2.5 align-middle text-start tabular-nums">{b._count?.distributions ?? 0}</td>
-                  <td className="px-3 py-2.5 align-middle text-start">
+                  <td className="data-table-td border-e border-border/40 tabular-nums">{b._count?.distributions ?? 0}</td>
+                  <td className="data-table-td">
                     <Button
                       type="button"
                       variant="outline"
@@ -324,23 +346,7 @@ export function BeneficiariesPage() {
             </tbody>
           </table>
         )}
-        {data && totalPages > 1 ? (
-          <PaginationControls
-            page={page}
-            totalPages={totalPages}
-            isFetching={isFetching && !showInitialSkeleton}
-            summary={t('beneficiaries.pagingSummary', {
-              page,
-              totalPages,
-              total,
-            })}
-            prevLabel={t('beneficiaries.pagingPrev')}
-            nextLabel={t('beneficiaries.pagingNext')}
-            onPrev={() => setPage((p) => Math.max(1, p - 1))}
-            onNext={() => setPage((p) => p + 1)}
-          />
-        ) : null}
-      </Card>
+      </DataTableShell>
 
       <Dialog
         open={Boolean(delRow)}

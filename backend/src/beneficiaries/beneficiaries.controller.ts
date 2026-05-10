@@ -70,6 +70,43 @@ export class BeneficiariesController {
     res.send(`\uFEFF${csv}`);
   }
 
+  /** Duplicate detection for create/edit forms. Must be registered before `@Get(':id')`. */
+  @Get('duplicate-check')
+  @Roles(RoleCode.SUPER_ADMIN, RoleCode.ADMIN)
+  duplicateCheck(
+    @Query('fullName') fullName?: string,
+    @Query('phone') phone?: string,
+    @Query('area') area?: string,
+    @Query('street') street?: string,
+    @Query('excludeId') excludeId?: string,
+  ) {
+    return this.beneficiaries.duplicateCheck({
+      fullName,
+      phone,
+      area,
+      street,
+      excludeId,
+    });
+  }
+
+  /** Category + item needs only (lightweight; distribution UI). Must be registered before `@Get(':id')`. */
+  @Get(':id/needs')
+  @Roles(RoleCode.SUPER_ADMIN, RoleCode.ADMIN, RoleCode.DELIVERY)
+  needsSummary(@Param('id') id: string) {
+    return this.beneficiaries.getNeedsSummary(id);
+  }
+
+  /** Delivered aid per category in the last N days (for distribution duplicate warnings). Must be registered before `@Get(':id')`. */
+  @Get(':id/recent-aid')
+  @Roles(RoleCode.SUPER_ADMIN, RoleCode.ADMIN)
+  recentAid(
+    @Param('id') id: string,
+    @Query('days') days?: string,
+    @Query('categoryIds') categoryIds?: string,
+  ) {
+    return this.beneficiaries.getRecentAid(id, { days, categoryIds });
+  }
+
   @Get(':id')
   @Roles(RoleCode.SUPER_ADMIN, RoleCode.ADMIN, RoleCode.DELIVERY)
   get(@Param('id') id: string) {

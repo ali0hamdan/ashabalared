@@ -112,6 +112,26 @@ export class DistributionController {
     return this.distribution.list(actor, { status, q, search, page, limit });
   }
 
+  /** Group distributions by beneficiary area (active beneficiaries only). Must be registered before `@Get(':id')`. */
+  @Get('by-area')
+  @Roles(RoleCode.SUPER_ADMIN, RoleCode.ADMIN, RoleCode.DELIVERY)
+  listByArea(
+    @CurrentUser() actor: AuthUser,
+    @Query('status') status?: string,
+    @Query('driverId') driverId?: string,
+    @Query('area') area?: string,
+    @Query('q') q?: string,
+    @Query('search') search?: string,
+  ) {
+    return this.distribution.listByArea(actor, {
+      status,
+      driverId,
+      area,
+      q,
+      search,
+    });
+  }
+
   @Get(':id')
   @Roles(RoleCode.SUPER_ADMIN, RoleCode.ADMIN, RoleCode.DELIVERY)
   get(@CurrentUser() actor: AuthUser, @Param('id') id: string) {

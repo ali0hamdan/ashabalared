@@ -1,3 +1,4 @@
+import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card, CardDescription, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
@@ -10,7 +11,17 @@ import { useNavigate } from 'react-router-dom';
 import { toast } from 'sonner';
 import { useTranslation } from 'react-i18next';
 import type { PaginatedResponse } from '@/lib/paginated';
-import type { BeneficiaryDetailApi, BeneficiaryPickRow, CategoryLinkRow, StockRowForSelect } from '@/types/api-shapes';
+import type {
+  BeneficiaryNeedRow,
+  BeneficiaryNeedsResponse,
+  BeneficiaryPickRow,
+  RecentAidCategory,
+  RecentAidResponse,
+  StockRowForSelect,
+} from '@/types/api-shapes';
+import { formatDistanceToNow } from 'date-fns';
+import { ar } from 'date-fns/locale/ar';
+import { enUS } from 'date-fns/locale/en-US';
 
 type Line = { stockItemId: string; quantity: number };
 
@@ -33,7 +44,7 @@ function formatBeneficiaryAddressLines(b: {
 }
 
 export function DistributionNewPage() {
-  const { t } = useTranslation();
+  const { t, i18n } = useTranslation();
   const navigate = useNavigate();
   const qc = useQueryClient();
   const [step, setStep] = useState(1);
@@ -41,6 +52,8 @@ export function DistributionNewPage() {
   const [notes, setNotes] = useState('');
   const [lines, setLines] = useState<Line[]>([{ stockItemId: '', quantity: 1 }]);
   const [saving, setSaving] = useState(false);
+  const [recentAidAck, setRecentAidAck] = useState(false);
+  const [filterSuggestedOnly, setFilterSuggestedOnly] = useState(false);
   const [benSearchInput, setBenSearchInput] = useState('');
   const [benSearchDebounced, setBenSearchDebounced] = useState('');
   const [selectedPick, setSelectedPick] = useState<{
@@ -122,42 +135,121 @@ export function DistributionNewPage() {
   });
   const stocks = useMemo((): StockRowForSelect[] => (Array.isArray(stockRows) ? stockRows : []), [stockRows]);
 
-  const stockOptions = useMemo(
-    () =>
-      stocks.map((s) => ({
-        id: s.id,
-        label: `${s.aidCategoryItem?.aidCategory?.name ?? ''} — ${s.aidCategoryItem?.name ?? s.id} (${s.availableQuantity})`,
-      })),
-    [stocks],
-  );
-
-  const { data: beneficiaryDetail, isLoading: beneficiaryDetailLoading } = useQuery({
-    queryKey: ['beneficiary', beneficiaryId, 'distribution-new'],
-    enabled: Boolean(beneficiaryId) && step >= 3,
-    queryFn: async () => (await api.get<BeneficiaryDetailApi>(`/beneficiaries/${beneficiaryId}`)).data,
+  const { data: needsPayload, isLoading: needsLoading } = useQuery({
+    queryKey: ['beneficiary', beneficiaryId, 'needs'],
+    enabled: Boolean(beneficiaryId),
+    queryFn: async () =>
+      (await api.get<BeneficiaryNeedsResponse>(`/beneficiaries/${beneficiaryId}/needs`)).data,
   });
 
-  const beneficiaryNeeds = useMemo((): CategoryLinkRow[] => {
-    const cats = beneficiaryDetail?.categories;
-    if (!Array.isArray(cats)) return [];
-    return cats.filter((bc) => typeof bc.quantity === 'number' && bc.quantity >= 1);
-  }, [beneficiaryDetail]);
+  const needRows = useMemo((): BeneficiaryNeedRow[] => {
+    const n = needsPayload?.needs;
+    return Array.isArray(n) ? n : [];
+  }, [needsPayload]);
 
-  function prefillLinesFromNeeds() {
-    if (!beneficiaryNeeds.length) {
-      toast.warning(t('distributionNew.noNeedsRecorded'));
+  const suggestedCategoryIds = useMemo(() => new Set(needRows.map((n) => n.aidCategoryId)), [needRows]);
+
+  const suggestedCategoryLabels = useMemo(() => {
+    const m = new Map<string, string>();
+    for (const n of needRows) {
+      if (!m.has(n.aidCategoryId)) m.set(n.aidCategoryId, n.aidCategoryName);
+    }
+    return [...m.values()].sort((a, b) => a.localeCompare(b));
+  }, [needRows]);
+
+  const stockOptions = useMemo(() => {
+    return stocks.map((s) => {
+      const cid =
+        s.aidCategoryItem?.aidCategoryId ?? s.aidCategoryItem?.aidCategory?.id ?? '';
+      const suggested = Boolean(cid && suggestedCategoryIds.has(cid));
+      const base = `${s.aidCategoryItem?.aidCategory?.name ?? ''} — ${s.aidCategoryItem?.name ?? s.id} (${s.availableQuantity})`;
+      const label = suggested ? `${t('distributionNew.suggestedBadge')} · ${base}` : base;
+      return {
+        id: s.id,
+        label,
+        suggested,
+      };
+    });
+  }, [stocks, suggestedCategoryIds, t]);
+
+  const stockOptionsForSelect = useMemo(() => {
+    const selectedStockIds = new Set(lines.map((l) => l.stockItemId).filter(Boolean));
+    let opts = stockOptions;
+    if (filterSuggestedOnly) {
+      opts = stockOptions.filter((o) => o.suggested || selectedStockIds.has(o.id));
+    }
+    return opts;
+  }, [stockOptions, filterSuggestedOnly, lines]);
+
+  const selectedAidCategoryIds = useMemo(() => {
+    const ids = new Set<string>();
+    for (const line of lines) {
+      if (!line.stockItemId) continue;
+      const s = stocks.find((x) => x.id === line.stockItemId);
+      const cid =
+        s?.aidCategoryItem?.aidCategoryId ?? s?.aidCategoryItem?.aidCategory?.id ?? '';
+      if (cid) ids.add(cid);
+    }
+    return [...ids].sort();
+  }, [lines, stocks]);
+
+  const recentAidCategoryKey = selectedAidCategoryIds.join(',');
+
+  const {
+    data: recentAid,
+    isFetching: recentAidFetching,
+  } = useQuery({
+    queryKey: ['beneficiary', beneficiaryId, 'recent-aid', 7, recentAidCategoryKey],
+    enabled: step >= 3 && Boolean(beneficiaryId) && selectedAidCategoryIds.length > 0,
+    queryFn: async () =>
+      (
+        await api.get<RecentAidResponse>(`/beneficiaries/${beneficiaryId}/recent-aid`, {
+          params: { days: 7, categoryIds: recentAidCategoryKey },
+        })
+      ).data,
+  });
+
+  const recentWarnings = useMemo((): RecentAidCategory[] => {
+    if (step < 3 || !beneficiaryId || selectedAidCategoryIds.length === 0) return [];
+    return recentAid?.categories ?? [];
+  }, [step, beneficiaryId, selectedAidCategoryIds.length, recentAid]);
+
+  useEffect(() => {
+    setRecentAidAck(false);
+  }, [beneficiaryId, recentAidCategoryKey]);
+
+  useEffect(() => {
+    setFilterSuggestedOnly(false);
+  }, [beneficiaryId]);
+
+  function applySuggestedItems() {
+    if (!needRows.length) {
+      toast.warning(t('distributionNew.noRecordedNeedsBeneficiary'));
+      return;
+    }
+    if (!stocks.length) {
+      toast.warning(t('distributionNew.noStock'));
       return;
     }
     const newLines: Line[] = [];
-    for (const bc of beneficiaryNeeds) {
-      const catId = bc.categoryId ?? bc.category?.id;
-      const qty = Math.max(1, typeof bc.quantity === 'number' ? bc.quantity : 1);
-      const match = stocks.find(
-        (s) =>
-          catId &&
-          (s.aidCategoryItem?.aidCategoryId === catId || s.aidCategoryItem?.aidCategory?.id === catId) &&
-          (s.availableQuantity ?? 0) > 0,
-      );
+    for (const need of needRows) {
+      let match: StockRowForSelect | undefined;
+      if (need.itemId) {
+        match = stocks.find(
+          (s) =>
+            s.aidCategoryItem?.id === need.itemId &&
+            (s.availableQuantity ?? 0) > 0,
+        );
+      }
+      if (!match) {
+        match = stocks.find(
+          (s) =>
+            (s.aidCategoryItem?.aidCategoryId === need.aidCategoryId ||
+              s.aidCategoryItem?.aidCategory?.id === need.aidCategoryId) &&
+            (s.availableQuantity ?? 0) > 0,
+        );
+      }
+      const qty = Math.max(1, need.quantity >= 1 ? need.quantity : 1);
       newLines.push({ stockItemId: match?.id ?? '', quantity: qty });
     }
     if (newLines.length) setLines(newLines);
@@ -186,6 +278,14 @@ export function DistributionNewPage() {
     }
     if (cleaned.length === 0) {
       toast.error(t('distributionNew.needLines'));
+      return;
+    }
+    if (selectedAidCategoryIds.length > 0 && recentAidFetching) {
+      toast.info(t('distributionNew.recentAidChecking'));
+      return;
+    }
+    if (recentWarnings.length > 0 && !recentAidAck) {
+      toast.error(t('distributionNew.recentAidMustAcknowledge'));
       return;
     }
     const seen = new Set<string>();
@@ -335,6 +435,56 @@ export function DistributionNewPage() {
               ) : null}
             </div>
           )}
+          {beneficiaryId ? (
+            <div className="max-w-xl space-y-2 rounded-lg border border-border bg-muted/15 p-3">
+              <div className="text-sm font-semibold">{t('distributionNew.suggestedAidTitle')}</div>
+              <p className="text-xs text-muted-foreground">{t('distributionNew.suggestedAidDesc')}</p>
+              {needsLoading ? (
+                <div className="text-xs text-muted-foreground">{t('common.loading')}</div>
+              ) : needRows.length === 0 ? (
+                <p className="text-sm text-muted-foreground">{t('distributionNew.noRecordedNeedsBeneficiary')}</p>
+              ) : (
+                <div className="overflow-x-auto rounded-md border border-border bg-card text-sm">
+                  <table className="w-full min-w-[320px] table-fixed border-separate border-spacing-0">
+                    <colgroup>
+                      <col className="w-[28%]" />
+                      <col className="w-[28%]" />
+                      <col className="w-[14%]" />
+                      <col className="w-[30%]" />
+                    </colgroup>
+                    <thead>
+                      <tr className="border-b border-border bg-muted/40">
+                        <th className="border-e border-border px-2 py-2 text-start text-xs font-medium">
+                          {t('distributionNew.needCategoryCol')}
+                        </th>
+                        <th className="border-e border-border px-2 py-2 text-start text-xs font-medium">
+                          {t('distributionNew.needItemCol')}
+                        </th>
+                        <th className="border-e border-border px-2 py-2 text-start text-xs font-medium">
+                          {t('distributionNew.needQtyCol')}
+                        </th>
+                        <th className="px-2 py-2 text-start text-xs font-medium">{t('distributionNew.needNotesCol')}</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {needRows.map((row, idx) => (
+                        <tr key={`${row.aidCategoryId}-${row.itemId ?? 'c'}-${idx}`} className="border-b border-border/70 last:border-0">
+                          <td className="border-e border-border px-2 py-2 align-middle break-words">{row.aidCategoryName}</td>
+                          <td className="border-e border-border px-2 py-2 align-middle break-words text-muted-foreground">
+                            {row.itemName ?? t('distributionNew.categoryLevelNeed')}
+                          </td>
+                          <td className="border-e border-border px-2 py-2 align-middle tabular-nums">{row.quantity}</td>
+                          <td className="px-2 py-2 align-middle break-words text-muted-foreground">
+                            {row.notes?.trim() ? row.notes : t('common.dash')}
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+            </div>
+          ) : null}
           <div className="flex justify-end gap-2 pt-2">
             <Button type="button" variant="outline" onClick={() => navigate('/app/distributions')}>
               {t('common.cancel')}
@@ -350,6 +500,16 @@ export function DistributionNewPage() {
         <Card className="space-y-3 p-4">
           <CardTitle>{t('distributionNew.step2')}</CardTitle>
           <CardDescription>{t('distributionNew.step2Desc')}</CardDescription>
+          {beneficiaryId && needsLoading ? (
+            <div className="text-xs text-muted-foreground">{t('common.loading')}</div>
+          ) : beneficiaryId && suggestedCategoryLabels.length > 0 ? (
+            <p className="text-sm text-muted-foreground">
+              <span className="font-medium text-foreground">{t('distributionNew.suggestedCategoriesHint')}:</span>{' '}
+              {suggestedCategoryLabels.join(', ')}
+            </p>
+          ) : beneficiaryId && !needsLoading && needRows.length === 0 ? (
+            <p className="text-sm text-muted-foreground">{t('distributionNew.noRecordedNeedsBeneficiary')}</p>
+          ) : null}
           {stockLoading ? (
             <div className="text-sm text-muted-foreground">{t('common.loading')}</div>
           ) : stockOptions.length === 0 ? (
@@ -371,29 +531,42 @@ export function DistributionNewPage() {
           <CardTitle>{t('distributionNew.step3')}</CardTitle>
           <CardDescription>{t('distributionNew.step3Desc')}</CardDescription>
 
-          {beneficiaryDetailLoading ? (
+          {needsLoading ? (
             <div className="text-sm text-muted-foreground">{t('common.loading')}</div>
           ) : (
             <>
               <div className="space-y-2 rounded-lg border border-border bg-muted/20 p-3">
-                <div className="text-sm font-semibold">{t('distributionNew.beneficiaryNeedsTitle')}</div>
-                <p className="text-xs text-muted-foreground">{t('distributionNew.beneficiaryNeedsDesc')}</p>
-                {beneficiaryNeeds.length === 0 ? (
-                  <p className="text-sm text-muted-foreground">{t('distributionNew.noNeedsRecorded')}</p>
+                <div className="text-sm font-semibold">{t('distributionNew.suggestedAidTitle')}</div>
+                <p className="text-xs text-muted-foreground">{t('distributionNew.suggestedAidDesc')}</p>
+                {needRows.length === 0 ? (
+                  <p className="text-sm text-muted-foreground">{t('distributionNew.noRecordedNeedsBeneficiary')}</p>
                 ) : (
                   <div className="overflow-x-auto rounded-md border border-border bg-card">
-                    <table className="w-full min-w-[280px] table-fixed border-separate border-spacing-0 text-sm">
+                    <table className="w-full min-w-[320px] table-fixed border-separate border-spacing-0 text-sm">
                       <colgroup>
-                        <col className="w-[38%]" />
-                        <col className="w-[24%]" />
-                        <col className="w-[38%]" />
+                        <col className="w-[28%]" />
+                        <col className="w-[28%]" />
+                        <col className="w-[14%]" />
+                        <col className="w-[30%]" />
                       </colgroup>
                       <thead>
                         <tr className="border-b border-border bg-muted/40">
-                          <th scope="col" className="border-e border-border px-3 py-2.5 text-start font-medium text-foreground">
+                          <th
+                            scope="col"
+                            className="border-e border-border px-3 py-2.5 text-start font-medium text-foreground"
+                          >
                             {t('distributionNew.needCategoryCol')}
                           </th>
-                          <th scope="col" className="border-e border-border px-3 py-2.5 text-start font-medium text-foreground">
+                          <th
+                            scope="col"
+                            className="border-e border-border px-3 py-2.5 text-start font-medium text-foreground"
+                          >
+                            {t('distributionNew.needItemCol')}
+                          </th>
+                          <th
+                            scope="col"
+                            className="border-e border-border px-3 py-2.5 text-start font-medium text-foreground"
+                          >
                             {t('distributionNew.needQtyCol')}
                           </th>
                           <th scope="col" className="px-3 py-2.5 text-start font-medium text-foreground">
@@ -402,16 +575,19 @@ export function DistributionNewPage() {
                         </tr>
                       </thead>
                       <tbody>
-                        {beneficiaryNeeds.map((bc: { id?: string; categoryId?: string; category?: { name?: string }; quantity?: number; notes?: string | null }) => (
-                          <tr key={bc.id ?? bc.categoryId} className="border-b border-border/70 last:border-0">
+                        {needRows.map((row, idx) => (
+                          <tr key={`${row.aidCategoryId}-${row.itemId ?? 'c'}-${idx}`} className="border-b border-border/70 last:border-0">
                             <td className="border-e border-border px-3 py-2.5 align-middle text-start break-words">
-                              {bc.category?.name ?? t('common.dash')}
+                              {row.aidCategoryName}
+                            </td>
+                            <td className="border-e border-border px-3 py-2.5 align-middle text-start break-words text-muted-foreground">
+                              {row.itemName ?? t('distributionNew.categoryLevelNeed')}
                             </td>
                             <td className="border-e border-border px-3 py-2.5 align-middle text-start tabular-nums">
-                              {bc.quantity ?? t('common.dash')}
+                              {row.quantity}
                             </td>
                             <td className="px-3 py-2.5 align-middle text-start break-words text-muted-foreground">
-                              {bc.notes?.trim() ? bc.notes : t('common.dash')}
+                              {row.notes?.trim() ? row.notes : t('common.dash')}
                             </td>
                           </tr>
                         ))}
@@ -427,32 +603,57 @@ export function DistributionNewPage() {
               </div>
 
               <div className="space-y-3 border-t border-border pt-4">
-                <div className="flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between">
+                <div className="flex flex-col gap-3 lg:flex-row lg:items-end lg:justify-between">
                   <div>
                     <div className="text-sm font-semibold">{t('distributionNew.allocationTitle')}</div>
                     <p className="text-xs text-muted-foreground">{t('distributionNew.allocationDesc')}</p>
                   </div>
-                  <Button
-                    type="button"
-                    variant="outline"
-                    className="h-9 shrink-0 text-xs"
-                    onClick={() => prefillLinesFromNeeds()}
-                    disabled={!beneficiaryNeeds.length || stockOptions.length === 0}
-                  >
-                    {t('distributionNew.prefillFromNeeds')}
-                  </Button>
+                  <div className="flex flex-wrap items-center gap-3">
+                    {suggestedCategoryIds.size > 0 ? (
+                      <label className="flex cursor-pointer items-center gap-2 text-xs">
+                        <input
+                          type="checkbox"
+                          checked={filterSuggestedOnly}
+                          onChange={(e) => setFilterSuggestedOnly(e.target.checked)}
+                          className="h-4 w-4 shrink-0 rounded border border-input accent-primary"
+                        />
+                        <span>{t('distributionNew.filterSuggestedStock')}</span>
+                      </label>
+                    ) : null}
+                    <Button
+                      type="button"
+                      variant="outline"
+                      className="h-9 shrink-0 text-xs"
+                      onClick={() => applySuggestedItems()}
+                      disabled={!needRows.length || stockOptions.length === 0}
+                    >
+                      {t('distributionNew.useSuggestedItems')}
+                    </Button>
+                  </div>
                 </div>
-                {lines.map((line, i) => (
+                {filterSuggestedOnly && stockOptionsForSelect.length === 0 && stockOptions.length > 0 ? (
+                  <p className="text-xs text-amber-800 dark:text-amber-200">{t('distributionNew.filterSuggestedNoMatches')}</p>
+                ) : null}
+                {lines.map((line, i) => {
+                  const sel = stockOptions.find((o) => o.id === line.stockItemId);
+                  return (
                   <div key={i} className="flex flex-col gap-2 rounded-lg border border-border p-3 sm:flex-row sm:items-end">
                     <div className="min-w-0 flex-1 space-y-1">
-                      <Label>{t('stock.colItem')}</Label>
+                      <div className="flex flex-wrap items-center gap-2">
+                        <Label>{t('stock.colItem')}</Label>
+                        {sel?.suggested ? (
+                          <Badge variant="success" className="font-normal">
+                            {t('distributionNew.suggestedBadge')}
+                          </Badge>
+                        ) : null}
+                      </div>
                       <select
                         className="h-10 w-full rounded-md border border-border bg-card px-3 text-sm"
                         value={line.stockItemId}
                         onChange={(e) => updateLine(i, { stockItemId: e.target.value })}
                       >
                         <option value="">{t('common.dash')}</option>
-                        {stockOptions.map((o) => (
+                        {stockOptionsForSelect.map((o) => (
                           <option key={o.id} value={o.id}>
                             {o.label}
                           </option>
@@ -472,11 +673,83 @@ export function DistributionNewPage() {
                       {t('common.delete')}
                     </Button>
                   </div>
-                ))}
+                  );
+                })}
                 <Button type="button" variant="outline" onClick={addLine}>
                   {t('distributionNew.addLine')}
                 </Button>
               </div>
+
+              {selectedAidCategoryIds.length > 0 && recentAidFetching ? (
+                <p className="text-xs text-muted-foreground">{t('distributionNew.recentAidChecking')}</p>
+              ) : null}
+
+              {recentWarnings.length > 0 ? (
+                <div className="space-y-3 rounded-lg border border-amber-500/40 bg-amber-500/10 px-3 py-3 dark:bg-amber-950/30">
+                  <div className="text-sm font-semibold text-amber-950 dark:text-amber-100">
+                    {t('distributionNew.recentAidTitle')}
+                  </div>
+                  <p className="text-xs text-amber-900/90 dark:text-amber-100/90">
+                    {t('distributionNew.recentAidSubtitle', { days: recentAid?.days ?? 7 })}
+                  </p>
+                  <ul className="space-y-3 text-sm">
+                    {recentWarnings.map((cat) => {
+                      const locale = i18n.language.startsWith('ar') ? ar : enUS;
+                      let when = '';
+                      try {
+                        when = formatDistanceToNow(new Date(cat.lastDeliveredAt), {
+                          addSuffix: true,
+                          locale,
+                        });
+                      } catch {
+                        when = cat.lastDeliveredAt;
+                      }
+                      return (
+                        <li
+                          key={cat.aidCategoryId}
+                          className="rounded-md border border-amber-500/25 bg-background/80 px-3 py-2 dark:bg-background/40"
+                        >
+                          <div className="font-medium text-foreground">
+                            {t('distributionNew.recentAidSummary', {
+                              category: cat.aidCategoryName || t('common.dash'),
+                              when,
+                            })}
+                          </div>
+                          <div className="mt-1 text-xs text-muted-foreground">
+                            {t('distributionNew.recentAidLastDelivery')}:{' '}
+                            {new Date(cat.lastDeliveredAt).toLocaleString(
+                              i18n.language.startsWith('ar') ? 'ar' : undefined,
+                            )}
+                          </div>
+                          {cat.deliveredItems.length > 0 ? (
+                            <div className="mt-2">
+                              <div className="text-xs font-medium text-muted-foreground">
+                                {t('distributionNew.recentAidItemsHeading')}
+                              </div>
+                              <ul className="mt-1 list-inside list-disc text-xs text-muted-foreground">
+                                {cat.deliveredItems.map((it, idx) => (
+                                  <li key={`${cat.aidCategoryId}-${it.aidCategoryItemId ?? idx}`}>
+                                    {it.itemName || t('common.dash')} × {it.quantityDelivered}
+                                  </li>
+                                ))}
+                              </ul>
+                            </div>
+                          ) : null}
+                        </li>
+                      );
+                    })}
+                  </ul>
+                  <label className="flex cursor-pointer items-start gap-2 text-sm">
+                    <input
+                      type="checkbox"
+                      checked={recentAidAck}
+                      onChange={(e) => setRecentAidAck(e.target.checked)}
+                      className="mt-0.5 h-4 w-4 shrink-0 rounded border border-input accent-primary"
+                    />
+                    <span>{t('distributionNew.recentAidAck')}</span>
+                  </label>
+                </div>
+              ) : null}
             </>
           )}
 
@@ -484,7 +757,15 @@ export function DistributionNewPage() {
             <Button type="button" variant="outline" onClick={() => setStep(2)}>
               {t('common.back')}
             </Button>
-            <Button type="button" disabled={saving} onClick={() => void submit()}>
+            <Button
+              type="button"
+              disabled={
+                saving ||
+                (selectedAidCategoryIds.length > 0 && recentAidFetching) ||
+                (recentWarnings.length > 0 && !recentAidAck)
+              }
+              onClick={() => void submit()}
+            >
               {saving ? t('common.saving') : t('distributionNew.submit')}
             </Button>
           </div>

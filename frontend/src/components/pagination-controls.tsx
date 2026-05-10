@@ -34,7 +34,10 @@ export function PaginationControls({
 
   return (
     <div
-      className={cn('flex flex-wrap items-center justify-between gap-2 border-t border-border px-3 py-2.5 text-sm', className)}
+      className={cn(
+        'flex flex-wrap items-center justify-between gap-3 border-t border-border/70 px-4 py-3 text-sm text-muted-foreground',
+        className,
+      )}
       aria-busy={isFetching ? true : undefined}
     >
       <span className="flex min-h-6 flex-wrap items-center gap-2 text-muted-foreground">
@@ -44,10 +47,10 @@ export function PaginationControls({
         ) : null}
       </span>
       <div className="flex gap-2">
-        <Button type="button" variant="outline" className="h-8 min-w-[5rem] px-3 text-xs" disabled={disablePrev} onClick={() => onPrev()}>
+        <Button type="button" variant="outline" className="h-9 min-w-[5.5rem] rounded-lg px-3 text-xs" disabled={disablePrev} onClick={() => onPrev()}>
           {prevLabel}
         </Button>
-        <Button type="button" variant="outline" className="h-8 min-w-[5rem] px-3 text-xs" disabled={disableNext} onClick={() => onNext()}>
+        <Button type="button" variant="outline" className="h-9 min-w-[5.5rem] rounded-lg px-3 text-xs" disabled={disableNext} onClick={() => onNext()}>
           {nextLabel}
         </Button>
       </div>

@@ -12,6 +12,9 @@ import { Badge } from '@/components/ui/badge';
 import { useTranslation } from 'react-i18next';
 import { parseDeleteBlocked, type DeleteBlockedPayload } from '@/lib/deleteBlocked';
 import { AdminForceDeletePanel } from '@/components/AdminForceDeletePanel';
+import { DataTableShell } from '@/components/layout/DataTableShell';
+import { PageHeader } from '@/components/layout/PageHeader';
+import { StockTableSkeleton } from '@/components/table-skeletons';
 import type { AidCategoryOption, StockItemNested } from '@/types/api-shapes';
 
 type StockTableRow = StockItemNested;
@@ -205,25 +208,25 @@ export function StockPage() {
   }
 
   return (
-    <div className="space-y-4">
-      <div className="flex flex-col gap-2 md:flex-row md:items-end md:justify-between">
-        <div>
-          <h1 className="text-2xl font-bold">{t('stock.title')}</h1>
-          <p className="text-sm text-muted-foreground">{t('stock.subtitle')}</p>
-        </div>
-        {role !== 'DELIVERY' ? (
-          <Button type="button" onClick={() => setAddDlg(true)}>
-            {t('stock.addStock')}
-          </Button>
-        ) : null}
-      </div>
+    <div className="space-y-8">
+      <PageHeader
+        title={t('stock.title')}
+        description={t('stock.subtitle')}
+        actions={
+          role !== 'DELIVERY' ? (
+            <Button type="button" onClick={() => setAddDlg(true)}>
+              {t('stock.addStock')}
+            </Button>
+          ) : null
+        }
+      />
 
-      <Card className="space-y-3 p-3 sm:p-4">
-        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4">
-          <div className="space-y-1">
+      <Card className="space-y-4 p-4 sm:p-5">
+        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
+          <div className="space-y-1.5">
             <Label>{t('stock.filterCategory')}</Label>
             <select
-              className="h-10 w-full rounded-md border border-border bg-card px-3 text-sm"
+              className="form-select"
               value={categoryId}
               onChange={(e) => setCategoryId(e.target.value)}
             >
@@ -235,50 +238,66 @@ export function StockPage() {
               ))}
             </select>
           </div>
-          <div className="space-y-1">
+          <div className="space-y-1.5">
             <Label>{t('stock.filterName')}</Label>
             <Input value={q} onChange={(e) => setQ(e.target.value)} placeholder={t('stock.searchPlaceholder')} />
           </div>
-          <label className="flex items-center gap-2 pt-0 text-sm sm:pt-7">
-            <input type="checkbox" checked={lowOnly} onChange={(e) => setLowOnly(e.target.checked)} />
-            {t('stock.lowOnly')}
+          <label className="flex cursor-pointer items-center gap-2.5 pt-0 text-sm sm:pt-8">
+            <input
+              type="checkbox"
+              className="h-[1.125rem] w-[1.125rem] rounded border border-input accent-primary"
+              checked={lowOnly}
+              onChange={(e) => setLowOnly(e.target.checked)}
+            />
+            <span>{t('stock.lowOnly')}</span>
           </label>
-          <label className="flex items-center gap-2 pt-0 text-sm sm:pt-7">
-            <input type="checkbox" checked={hasAvailable} onChange={(e) => setHasAvailable(e.target.checked)} />
-            {t('stock.hasAvailable')}
+          <label className="flex cursor-pointer items-center gap-2.5 pt-0 text-sm sm:pt-8">
+            <input
+              type="checkbox"
+              className="h-[1.125rem] w-[1.125rem] rounded border border-input accent-primary"
+              checked={hasAvailable}
+              onChange={(e) => setHasAvailable(e.target.checked)}
+            />
+            <span>{t('stock.hasAvailable')}</span>
           </label>
         </div>
       </Card>
 
-      <Card className="overflow-x-auto p-0">
+      <DataTableShell>
         {isLoading ? (
-          <div className="p-6 text-sm text-muted-foreground">{t('common.loading')}</div>
+          <div className="p-0" aria-busy={true}>
+            <StockTableSkeleton rows={10} />
+          </div>
         ) : (
           <table className="w-full min-w-[820px] text-sm">
-            <thead className="bg-muted/40 text-start">
-              <tr className="border-b border-border">
-                <th className="p-3">{t('stock.colItem')}</th>
-                <th className="p-3">{t('stock.colCategory')}</th>
-                <th className="p-3">{t('stock.colAvailable')}</th>
-                <th className="p-3">{t('stock.colDelivered')}</th>
-                <th className="p-3">{t('stock.colThreshold')}</th>
-                <th className="p-3">{t('stock.colAlert')}</th>
-                {role !== 'DELIVERY' ? <th className="p-3">{t('stock.colAction')}</th> : null}
+            <thead className="data-table-head">
+              <tr>
+                <th className="data-table-th border-e border-border/40">{t('stock.colItem')}</th>
+                <th className="data-table-th border-e border-border/40">{t('stock.colCategory')}</th>
+                <th className="data-table-th border-e border-border/40">{t('stock.colAvailable')}</th>
+                <th className="data-table-th border-e border-border/40">{t('stock.colDelivered')}</th>
+                <th className="data-table-th border-e border-border/40">{t('stock.colThreshold')}</th>
+                <th className="data-table-th border-e border-border/40">{t('stock.colAlert')}</th>
+                {role !== 'DELIVERY' ? <th className="data-table-th">{t('stock.colAction')}</th> : null}
               </tr>
             </thead>
             <tbody>
               {rows.map((s) => (
-                <tr key={s.id} className="border-b border-border hover:bg-muted/20">
-                  <td className="p-3 font-medium">{itemLabel(s)}</td>
-                  <td className="p-3">{catLabel(s)}</td>
-                  <td className="p-3">{s.availableQuantity}</td>
-                  <td className="p-3">{s.deliveredQuantity ?? 0}</td>
-                  <td className="p-3">{s.threshold}</td>
-                  <td className="p-3">
-                    {s.stockStatus === 'LOW' ? <Badge variant="danger">{t('stock.low')}</Badge> : <Badge variant="success">{t('stock.normal')}</Badge>}
+                <tr key={s.id} className="data-table-row border-b border-border/60">
+                  <td className="data-table-td border-e border-border/40 font-medium">{itemLabel(s)}</td>
+                  <td className="data-table-td border-e border-border/40">{catLabel(s)}</td>
+                  <td className="data-table-td border-e border-border/40 tabular-nums">{s.availableQuantity}</td>
+                  <td className="data-table-td border-e border-border/40 tabular-nums">{s.deliveredQuantity ?? 0}</td>
+                  <td className="data-table-td border-e border-border/40 tabular-nums">{s.threshold}</td>
+                  <td className="data-table-td border-e border-border/40">
+                    {s.stockStatus === 'LOW' ? (
+                      <Badge variant="warning">{t('stock.low')}</Badge>
+                    ) : (
+                      <Badge variant="success">{t('stock.normal')}</Badge>
+                    )}
                   </td>
                   {role !== 'DELIVERY' ? (
-                    <td className="p-3">
+                    <td className="data-table-td">
                       <div className="flex flex-wrap gap-1.5">
                       <Button className="h-9 px-2 text-xs" variant="outline" type="button" onClick={() => openEdit(s)}>
                         {t('common.edit')}
@@ -297,7 +316,7 @@ export function StockPage() {
             </tbody>
           </table>
         )}
-      </Card>
+      </DataTableShell>
 
       <Dialog
         open={Boolean(dlg)}

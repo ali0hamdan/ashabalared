@@ -40,12 +40,12 @@ export function LoginPage() {
   }
 
   return (
-    <div className="flex min-h-screen flex-col items-center justify-center bg-gradient-to-br from-sky-50 via-white to-emerald-50 p-4 pt-16 dark:from-slate-950 dark:via-background dark:to-slate-900 sm:pt-4">
+    <div className="flex min-h-screen flex-col items-center justify-center bg-gradient-to-br from-slate-50 via-background to-slate-100/90 p-4 pt-16 dark:from-slate-950 dark:via-background dark:to-slate-900 sm:pt-4">
       <div className="absolute end-3 top-3 z-10 flex items-center gap-2 sm:end-4 sm:top-4">
         <ThemeToggle />
         <LanguageSwitcher />
       </div>
-      <Card className="w-full min-w-0 max-w-md border-border/70 shadow-md">
+      <Card className="w-full min-w-0 max-w-md border-border/60 shadow-card">
         <CardTitle className="text-2xl">{t('login.title')}</CardTitle>
         <CardDescription className="mt-2">{t('login.subtitle')}</CardDescription>
         <form className="mt-6 space-y-4" onSubmit={onSubmit}>

@@ -60,6 +60,26 @@ export function BeneficiariesTableSkeleton({ rows = 8 }: { rows?: number }) {
   );
 }
 
+/** Delivery-by-area grouped sections (collapsible skeleton). */
+export function DeliveryByAreaSkeleton({ sections = 3 }: { sections?: number }) {
+  return (
+    <div className="space-y-4" aria-busy={true}>
+      {Array.from({ length: sections }).map((_, si) => (
+        <div key={si} className="overflow-hidden rounded-lg border border-border bg-card">
+          <div className="flex flex-wrap items-center justify-between gap-2 border-b border-border bg-muted/30 px-4 py-3">
+            <Skeleton className="h-6 w-40 max-w-[70%]" />
+            <Skeleton className="h-5 w-24 rounded-full" />
+          </div>
+          <div className="space-y-3 p-4">
+            <Skeleton className="h-28 w-full rounded-lg" />
+            <Skeleton className="h-28 w-full rounded-lg" />
+          </div>
+        </div>
+      ))}
+    </div>
+  );
+}
+
 /** Desktop distributions table (9 columns). */
 export function DistributionsTableSkeleton({ rows = 6 }: { rows?: number }) {
   return (
@@ -190,6 +210,101 @@ export function CategoryBeneficiariesMobileSkeleton({ cards = 4 }: { cards?: num
 }
 
 /** Beneficiaries history: stacked cards. */
+/** Stock list table */
+export function StockTableSkeleton({ rows = 8 }: { rows?: number }) {
+  const cols = 7;
+  return (
+    <table className="w-full min-w-[820px] text-sm">
+      <thead className="data-table-head">
+        <tr>
+          {Array.from({ length: cols }).map((_, i) => (
+            <th key={i} className="data-table-th border-e border-border/40 last:border-e-0">
+              <Skeleton className="h-3 w-20" />
+            </th>
+          ))}
+        </tr>
+      </thead>
+      <tbody>
+        {Array.from({ length: rows }).map((_, ri) => (
+          <tr key={ri} className="data-table-row border-b border-border/60">
+            {Array.from({ length: cols }).map((_, ci) => (
+              <td key={ci} className="data-table-td border-e border-border/40 last:border-e-0">
+                <Skeleton className="h-4 w-full max-w-[8rem]" />
+              </td>
+            ))}
+          </tr>
+        ))}
+      </tbody>
+    </table>
+  );
+}
+
+/** Audit log table */
+export function AuditTableSkeleton({ rows = 10 }: { rows?: number }) {
+  return (
+    <table className="w-full min-w-[980px] text-sm">
+      <thead className="data-table-head">
+        <tr>
+          {Array.from({ length: 5 }).map((_, i) => (
+            <th key={i} className="data-table-th border-e border-border/40 last:border-e-0">
+              <Skeleton className="h-3 w-24" />
+            </th>
+          ))}
+        </tr>
+      </thead>
+      <tbody>
+        {Array.from({ length: rows }).map((_, ri) => (
+          <tr key={ri} className="data-table-row border-b border-border/60">
+            <td className="data-table-td border-e border-border/40">
+              <Skeleton className="h-4 w-36" />
+            </td>
+            <td className="data-table-td border-e border-border/40">
+              <Skeleton className="h-4 w-28" />
+            </td>
+            <td className="data-table-td border-e border-border/40">
+              <Skeleton className="h-4 w-20" />
+            </td>
+            <td className="data-table-td border-e border-border/40">
+              <Skeleton className="h-4 w-32" />
+            </td>
+            <td className="data-table-td">
+              <Skeleton className="h-4 w-28" />
+            </td>
+          </tr>
+        ))}
+      </tbody>
+    </table>
+  );
+}
+
+/** Users admin table */
+export function UsersTableSkeleton({ rows = 6 }: { rows?: number }) {
+  return (
+    <table className="w-full min-w-[980px] text-sm">
+      <thead className="data-table-head">
+        <tr>
+          {Array.from({ length: 6 }).map((_, i) => (
+            <th key={i} className="data-table-th border-e border-border/40 last:border-e-0">
+              <Skeleton className="h-3 w-24" />
+            </th>
+          ))}
+        </tr>
+      </thead>
+      <tbody>
+        {Array.from({ length: rows }).map((_, ri) => (
+          <tr key={ri} className="data-table-row border-b border-border/60">
+            {Array.from({ length: 6 }).map((_, ci) => (
+              <td key={ci} className="data-table-td border-e border-border/40 last:border-e-0">
+                <Skeleton className="h-4 w-full max-w-[10rem]" />
+              </td>
+            ))}
+          </tr>
+        ))}
+      </tbody>
+    </table>
+  );
+}
+
 export function BeneficiariesHistorySkeleton({ cards = 4 }: { cards?: number }) {
   return (
     <ul className="space-y-3">

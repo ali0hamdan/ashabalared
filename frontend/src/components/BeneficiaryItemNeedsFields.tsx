@@ -1,5 +1,6 @@
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
+import { Skeleton } from '@/components/ui/skeleton';
 import { cn } from '@/lib/utils';
 import type { TFunction } from 'i18next';
 import { ChevronDown, ChevronRight } from 'lucide-react';
@@ -72,24 +73,28 @@ export function BeneficiaryItemNeedsFields({
   return (
     <div className="space-y-3">
       {catLoading ? (
-        <div className="text-sm text-muted-foreground">{t('common.loading')}</div>
+        <div className="space-y-3 rounded-xl border border-border/70 bg-muted/30 p-4" aria-busy={true}>
+          <Skeleton className="h-5 w-48" />
+          <Skeleton className="h-24 w-full rounded-xl" />
+          <Skeleton className="h-24 w-full rounded-xl" />
+        </div>
       ) : (
         <div className="space-y-4">
-          <div className="space-y-1.5 rounded-lg border border-border bg-muted/30 px-3 py-2.5">
+          <div className="space-y-2 rounded-xl border border-border/70 bg-muted/35 px-4 py-3 shadow-sm">
             <div className="flex items-center gap-3">
               <input
                 id="beneficiary-can-cook-fields"
                 type="checkbox"
                 checked={canCook}
                 onChange={(e) => onCanCookChange(e.target.checked)}
-                className="h-4 w-4 shrink-0 rounded border border-input accent-primary"
+                className="h-[1.125rem] w-[1.125rem] shrink-0 rounded border border-input accent-primary"
               />
               <Label htmlFor="beneficiary-can-cook-fields" className="cursor-pointer text-sm font-medium leading-none">
                 {t('beneficiaryNew.canCook')}
               </Label>
             </div>
             {!canCook ? (
-              <p className="ps-7 text-xs text-muted-foreground">{t('beneficiaryNew.foodRationsCookHint')}</p>
+              <p className="ps-8 text-xs leading-relaxed text-muted-foreground">{t('beneficiaryNew.foodRationsCookHint')}</p>
             ) : null}
           </div>
 
@@ -104,7 +109,10 @@ export function BeneficiaryItemNeedsFields({
               const itemsVisible = categoryItemsVisible(c.id);
               const hasItems = c.items.length > 0;
               return (
-                <div key={c.id} className="rounded-lg border border-border bg-muted/10 p-3 sm:p-4">
+                <div
+                  key={c.id}
+                  className="rounded-xl border border-border/70 bg-card p-4 shadow-sm sm:p-5 dark:border-border"
+                >
                   <div
                     className={cn(
                       'flex flex-wrap items-start gap-x-3 gap-y-2',
@@ -119,7 +127,7 @@ export function BeneficiaryItemNeedsFields({
                           checked={catEffectiveOn}
                           disabled={foodBlocked}
                           onChange={(e) => setCategoryNeed(c.id, e.target.checked)}
-                          className="mt-0.5 h-4 w-4 shrink-0 rounded border border-input accent-primary disabled:cursor-not-allowed disabled:opacity-50"
+                          className="mt-0.5 h-[1.125rem] w-[1.125rem] shrink-0 rounded border border-input accent-primary disabled:cursor-not-allowed disabled:opacity-45"
                         />
                         <Label
                           htmlFor={catInputId}
@@ -143,7 +151,7 @@ export function BeneficiaryItemNeedsFields({
                           type="text"
                           inputMode="numeric"
                           autoComplete="off"
-                          className="h-9 w-[4.5rem] tabular-nums"
+                          className="h-11 w-[4.75rem] tabular-nums"
                           disabled={!catEffectiveOn}
                           placeholder="0"
                           value={categoryQtyFields[c.id] ?? ''}
@@ -159,7 +167,7 @@ export function BeneficiaryItemNeedsFields({
                     {hasItems ? (
                       <button
                         type="button"
-                        className="ms-auto inline-flex shrink-0 items-center gap-1.5 rounded-md border border-border bg-background px-2.5 py-1.5 text-xs font-medium text-foreground hover:bg-muted/60 sm:text-sm"
+                        className="ms-auto inline-flex shrink-0 items-center gap-1.5 rounded-lg border border-border/80 bg-muted/40 px-3 py-2 text-xs font-medium text-foreground transition-colors hover:bg-muted/70 sm:text-sm"
                         onClick={() => toggleCategoryItems(c.id)}
                         aria-expanded={itemsVisible}
                         aria-controls={`need-category-items-${c.id}`}
@@ -191,7 +199,7 @@ export function BeneficiaryItemNeedsFields({
                         return (
                           <li
                             key={it.id}
-                            className="flex flex-col gap-3 rounded-lg border border-border bg-background/80 p-3 sm:flex-row sm:items-start sm:gap-3"
+                            className="flex flex-col gap-3 rounded-lg border border-border/60 bg-muted/25 p-3 sm:flex-row sm:items-start sm:gap-3 dark:bg-muted/20"
                           >
                             <div className="min-w-0 flex-1 sm:pt-0.5">
                               <div className="text-sm font-medium leading-snug text-foreground">{it.name}</div>
@@ -203,7 +211,7 @@ export function BeneficiaryItemNeedsFields({
                               <div className="min-w-0 flex-1 space-y-1">
                                 <Label className="text-xs text-muted-foreground sm:sr-only">{t('beneficiaryNew.itemNotesLabel')}</Label>
                                 <Input
-                                  className="h-10"
+                                  className="min-h-11"
                                   maxLength={500}
                                   disabled={disabled}
                                   placeholder={t('beneficiaryNew.categoryNotesPlaceholder')}
@@ -222,7 +230,7 @@ export function BeneficiaryItemNeedsFields({
                                   type="text"
                                   inputMode="numeric"
                                   autoComplete="off"
-                                  className="h-10 tabular-nums"
+                                  className="min-h-11 tabular-nums"
                                   disabled={disabled}
                                   placeholder="0"
                                   value={st.qty}

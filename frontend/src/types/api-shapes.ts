@@ -71,6 +71,21 @@ export type DistributionListRow = {
   driver?: { displayName?: string | null; username?: string | null } | null;
   completedBy?: { displayName?: string | null; username?: string | null } | null;
   items?: DistributionLineItem[];
+  /** Present on `/distributions/by-area` responses */
+  outForDeliveryAt?: string | null;
+};
+
+export type DistributionByAreaGroup = {
+  areaKey: string;
+  areaLabel: string;
+  distributionCount: number;
+  beneficiaryCount: number;
+  distributions: DistributionListRow[];
+};
+
+export type DistributionByAreaResponse = {
+  areas: DistributionByAreaGroup[];
+  total: number;
 };
 
 export type DistributionBeneficiaryBrief = {
@@ -96,10 +111,45 @@ export type StockRowForSelect = {
   id: string;
   availableQuantity?: number;
   aidCategoryItem?: {
+    id?: string;
     name?: string | null;
     aidCategoryId?: string | null;
     aidCategory?: { id?: string | null; name?: string | null } | null;
   } | null;
+};
+
+/** GET /beneficiaries/:id/recent-aid */
+export type RecentAidDeliveredItem = {
+  aidCategoryItemId: string | null;
+  itemName: string;
+  quantityDelivered: number;
+};
+
+export type RecentAidCategory = {
+  aidCategoryId: string;
+  aidCategoryName: string;
+  lastDeliveredAt: string;
+  deliveredItems: RecentAidDeliveredItem[];
+};
+
+export type RecentAidResponse = {
+  days: number;
+  since: string;
+  categories: RecentAidCategory[];
+};
+
+/** GET /beneficiaries/:id/needs */
+export type BeneficiaryNeedRow = {
+  aidCategoryId: string;
+  aidCategoryName: string;
+  itemId: string | null;
+  itemName: string | null;
+  quantity: number;
+  notes: string | null;
+};
+
+export type BeneficiaryNeedsResponse = {
+  needs: BeneficiaryNeedRow[];
 };
 
 export type ItemNeedEntry = {

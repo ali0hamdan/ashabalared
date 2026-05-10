@@ -8,36 +8,59 @@
 
 @layer base {
   :root {
+    /* Calm canvas (~ slate-50) */
     --background: 210 40% 98%;
     --foreground: 222 47% 11%;
     --card: 0 0% 100%;
     --card-foreground: 222 47% 11%;
-    --muted: 210 30% 96%;
-    --muted-foreground: 215 16% 40%;
-    --border: 214 32% 91%;
-    --primary: 199 89% 38%;
+    --muted: 210 25% 96%;
+    --muted-foreground: 215 16% 38%;
+    --border: 214 24% 88%;
+    /* Brand blue — slightly less saturated */
+    --primary: 199 62% 37%;
     --primary-foreground: 210 40% 98%;
-    --accent: 168 55% 42%;
+    --accent: 168 45% 38%;
     --accent-foreground: 210 40% 98%;
-    --destructive: 0 72% 51%;
+    --destructive: 0 65% 48%;
     --destructive-foreground: 0 0% 100%;
+    --ring: 199 45% 45%;
   }
   .dark {
-    --background: 222 47% 8%;
-    --foreground: 210 40% 98%;
-    --card: 222 47% 11%;
-    --card-foreground: 210 40% 98%;
-    --muted: 217 33% 14%;
-    --muted-foreground: 215 20% 65%;
-    --border: 217 33% 20%;
-    --primary: 199 80% 48%;
-    --primary-foreground: 222 47% 8%;
-    --accent: 168 50% 40%;
+    --background: 222 47% 10%;
+    --foreground: 210 36% 96%;
+    --card: 222 47% 12%;
+    --card-foreground: 210 36% 96%;
+    --muted: 217 28% 16%;
+    --muted-foreground: 215 18% 72%;
+    --border: 217 24% 22%;
+    --primary: 199 55% 52%;
+    --primary-foreground: 222 47% 10%;
+    --accent: 168 40% 42%;
     --accent-foreground: 210 40% 98%;
-    --destructive: 0 62% 45%;
+    --destructive: 0 55% 48%;
     --destructive-foreground: 0 0% 100%;
+    --ring: 199 40% 55%;
   }
   body {
-    @apply min-h-screen bg-background text-foreground;
+    @apply min-h-screen bg-background text-foreground antialiased;
+  }
+}
+
+@layer components {
+  /* Shared operational table chrome */
+  thead.data-table-head {
+    @apply sticky top-0 z-10 border-b border-border/80 bg-muted/85 shadow-[inset_0_-1px_0_0_hsl(var(--border))] backdrop-blur-md dark:bg-muted/70;
+  }
+  .data-table-th {
+    @apply px-4 py-3.5 text-start text-xs font-semibold uppercase tracking-wide text-muted-foreground;
+  }
+  .data-table-td {
+    @apply border-b border-border/60 px-4 py-3.5 align-middle text-sm leading-relaxed;
+  }
+  .data-table-row {
+    @apply transition-colors hover:bg-muted/35;
+  }
+  .form-select {
+    @apply flex h-11 w-full rounded-lg border border-border/80 bg-card px-3 text-sm shadow-sm transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/25 focus-visible:ring-offset-2 focus-visible:ring-offset-background disabled:cursor-not-allowed disabled:opacity-50 dark:border-border;
   }
 }
