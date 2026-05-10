@@ -49,7 +49,7 @@ function getNavItems(): NavItem[] {
       icon: MapPin,
       roles: ['SUPER_ADMIN', 'ADMIN', 'DELIVERY'],
     },
-    { to: '/app/weekly-tracking', labelKey: 'nav.weeklyTracking', icon: CalendarDays, roles: ['SUPER_ADMIN', 'ADMIN', 'DELIVERY'] },
+    { to: '/app/weekly-tracking', labelKey: 'nav.weeklyTracking', icon: CalendarDays, roles: ['SUPER_ADMIN', 'ADMIN'] },
     { to: '/app/users', labelKey: 'nav.users', icon: Shield, roles: ['SUPER_ADMIN'] },
     { to: '/app/audit', labelKey: 'nav.audit', icon: FileText, roles: ['SUPER_ADMIN', 'ADMIN'] },
     { to: '/app/profile', labelKey: 'nav.profile', icon: User, roles: ['SUPER_ADMIN', 'ADMIN', 'DELIVERY'] },

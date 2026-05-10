@@ -63,7 +63,7 @@ export class DistributionController {
   constructor(private readonly distribution: DistributionService) {}
 
   @Get('weekly-tracking')
-  @Roles(RoleCode.SUPER_ADMIN, RoleCode.ADMIN, RoleCode.DELIVERY)
+  @Roles(RoleCode.SUPER_ADMIN, RoleCode.ADMIN)
   weeklyTracking(
     @CurrentUser() actor: AuthUser,
     @Query('aidCategoryId') aidCategoryId?: string,

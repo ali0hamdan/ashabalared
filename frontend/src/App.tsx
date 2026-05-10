@@ -74,7 +74,14 @@ export default function App() {
             />
             <Route path="/app/distributions" element={<DistributionsPage />} />
             <Route path="/app/delivery-by-area" element={<DeliveryByAreaPage />} />
-            <Route path="/app/weekly-tracking" element={<WeeklyTrackingPage />} />
+            <Route
+              path="/app/weekly-tracking"
+              element={
+                <RequireRole allow={['SUPER_ADMIN', 'ADMIN']}>
+                  <WeeklyTrackingPage />
+                </RequireRole>
+              }
+            />
             <Route
               path="/app/distributions/new"
               element={
