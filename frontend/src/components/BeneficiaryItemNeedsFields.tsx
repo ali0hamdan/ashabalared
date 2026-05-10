@@ -37,18 +37,18 @@ export function BeneficiaryItemNeedsFields({
   itemFields,
   setItemFields,
 }: Props) {
-  /** Per-category: hide item rows when `false`; omitted/`true` = items visible (default). */
+  /** Per-category: item rows stay collapsed until user clicks "Show items" (`true` = expanded). */
   const [categoryItemsOpen, setCategoryItemsOpen] = useState<Record<string, boolean>>({});
 
   function categoryItemsVisible(categoryId: string) {
-    return categoryItemsOpen[categoryId] !== false;
+    return categoryItemsOpen[categoryId] === true;
   }
 
   function toggleCategoryItems(categoryId: string) {
-    setCategoryItemsOpen((m) => {
-      const open = m[categoryId] !== false;
-      return { ...m, [categoryId]: open ? false : true };
-    });
+    setCategoryItemsOpen((m) => ({
+      ...m,
+      [categoryId]: !(m[categoryId] === true),
+    }));
   }
 
   function setCategoryNeed(categoryId: string, checked: boolean) {
