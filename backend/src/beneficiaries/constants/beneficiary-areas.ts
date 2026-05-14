@@ -13,6 +13,7 @@ export const BENEFICIARY_AREA_VALUES = [
   'Khalde',
   'Hermel',
   'Baalback',
+  'Quennarit',
 ] as const;
 
 export type BeneficiaryAreaValue = (typeof BENEFICIARY_AREA_VALUES)[number];
