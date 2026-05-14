@@ -174,6 +174,12 @@ export class DistributionController {
     return this.distribution.confirmDelivery(actor.userId, id, dto);
   }
 
+  @Patch(':id/undo-confirmation')
+  @Roles(RoleCode.SUPER_ADMIN)
+  undoDeliveryConfirmation(@CurrentUser() actor: AuthUser, @Param('id') id: string) {
+    return this.distribution.undoDeliveryConfirmation(actor, id);
+  }
+
   @Patch(':id/cancel')
   @Roles(RoleCode.SUPER_ADMIN, RoleCode.ADMIN)
   cancel(@CurrentUser() actor: AuthUser, @Param('id') id: string) {

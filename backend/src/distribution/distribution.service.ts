@@ -1178,6 +1178,138 @@ export class DistributionService {
     return this.get({ userId: actorUserId, roleCode: RoleCode.DELIVERY }, id);
   }
 
+  /**
+   * SUPER_ADMIN only (enforced by controller + guard). Reverts a mistaken delivery confirmation:
+   * restores on-hand stock by recorded line quantities, resets lines, returns status to ASSIGNED
+   * when a driver is still linked, otherwise PENDING.
+   */
+  async undoDeliveryConfirmation(actor: AuthUser, id: string) {
+    if (actor.roleCode !== RoleCode.SUPER_ADMIN) {
+      throw new ForbiddenException();
+    }
+
+    const dist = await this.prisma.distributionRecord.findUnique({
+      where: { id },
+      include: {
+        items: {
+          include: {
+            aidCategory: { select: { name: true } },
+            aidCategoryItem: { select: { name: true } },
+          },
+        },
+        beneficiary: { select: { fullName: true } },
+      },
+    });
+
+    if (!dist) throw new NotFoundException();
+
+    if (dist.status !== DistributionStatus.DELIVERED) {
+      throw new BadRequestException(
+        'Only delivered distributions can be undone.',
+      );
+    }
+
+    const priorCompletedById = dist.completedById;
+    const nextStatus = dist.driverId
+      ? DistributionStatus.ASSIGNED
+      : DistributionStatus.PENDING;
+
+    const restoredLines: Array<{
+      lineId: string;
+      stockItemId: string;
+      quantityRestored: number;
+      itemLabel: string;
+    }> = [];
+
+    await this.prisma.$transaction(async (tx) => {
+      for (const line of dist.items) {
+        const rawDelivered = line.quantityDelivered ?? 0;
+        const qtyRestore = Math.max(
+          0,
+          Math.min(rawDelivered, line.quantityPlanned),
+        );
+
+        const itemLabel =
+          line.aidCategoryItem?.name?.trim() ||
+          line.aidCategory?.name?.trim() ||
+          line.id;
+
+        restoredLines.push({
+          lineId: line.id,
+          stockItemId: line.stockItemId,
+          quantityRestored: qtyRestore,
+          itemLabel,
+        });
+
+        if (qtyRestore > 0) {
+          const stock = await tx.stockItem.findUnique({
+            where: { id: line.stockItemId },
+          });
+          if (!stock) {
+            throw new BadRequestException('Stock item missing for a line');
+          }
+
+          await tx.stockItem.update({
+            where: { id: stock.id },
+            data: { quantityOnHand: { increment: qtyRestore } },
+          });
+
+          await tx.stockMovement.create({
+            data: {
+              stockItemId: stock.id,
+              quantityDelta: qtyRestore,
+              movementType: StockMovementType.ADJUSTMENT_IN,
+              referenceType: 'DISTRIBUTION',
+              referenceId: dist.id,
+              createdById: actor.userId,
+              note: 'UNDO_DELIVERY_CONFIRMATION',
+            },
+          });
+        }
+
+        await tx.distributionRecordItem.update({
+          where: { id: line.id },
+          data: { quantityDelivered: 0 },
+        });
+      }
+
+      await tx.distributionRecord.update({
+        where: { id },
+        data: {
+          status: nextStatus,
+          deliveredAt: null,
+          completedById: null,
+          deliveryProofNote: null,
+        },
+      });
+
+      await tx.beneficiaryTimelineEvent.create({
+        data: {
+          beneficiaryId: dist.beneficiaryId,
+          titleAr: 'تم إلغاء تأكيد التسليم',
+          eventType: 'UNDO_DELIVERY_CONFIRMATION',
+          relatedId: dist.id,
+          detail: null,
+        },
+      });
+    });
+
+    await this.audit.log({
+      action: 'UNDO_DELIVERY_CONFIRMATION',
+      actorUserId: actor.userId,
+      entityType: 'DISTRIBUTION',
+      entityId: id,
+      details: {
+        beneficiaryName: dist.beneficiary?.fullName ?? null,
+        restoredStockLines: restoredLines,
+        priorCompletedById,
+        nextStatus,
+      } as Prisma.InputJsonValue,
+    });
+
+    return this.get(actor, id);
+  }
+
   async cancel(actorId: string, id: string) {
     const dist = await this.prisma.distributionRecord.findUnique({
       where: { id },

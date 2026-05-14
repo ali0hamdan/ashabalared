@@ -427,7 +427,12 @@
     "cancelBody": "The distribution will be marked cancelled. Stock is not touched while pending.",
     "deleteBody": "Only pending distributions can be deleted. This removes the record permanently.",
     "deliveredQty": "Delivered",
-    "labelProof": "Note / proof (optional)"
+    "labelProof": "Note / proof (optional)",
+    "undoConfirmation": "Undo",
+    "undoConfirmationTitle": "Undo delivery confirmation?",
+    "undoConfirmationBody": "Are you sure you want to undo this delivery confirmation? Stock quantities will be restored and the distribution will return to assigned status.",
+    "undoSuccess": "Delivery confirmation undone",
+    "undoError": "Could not undo delivery confirmation"
   },
   "distributionNew": {
     "title": "New distribution",

@@ -152,6 +152,8 @@ export function DistributionsPage() {
   const [forceDistConfirm, setForceDistConfirm] = useState('');
   const [forceDistReason, setForceDistReason] = useState('');
   const [forceDistPending, setForceDistPending] = useState(false);
+  const [undoDistId, setUndoDistId] = useState<string | null>(null);
+  const [undoPending, setUndoPending] = useState(false);
 
   const isAdmin = role === 'SUPER_ADMIN' || role === 'ADMIN';
 
@@ -245,6 +247,28 @@ export function DistributionsPage() {
         return;
       }
       toast.error((e as { response?: { data?: { message?: string } } })?.response?.data?.message ?? t('common.updateError'));
+    }
+  }
+
+  async function undoDeliveryConfirmation() {
+    if (!undoDistId) return;
+    setUndoPending(true);
+    try {
+      await api.patch(`/distributions/${undoDistId}/undo-confirmation`);
+      toast.success(t('distributions.undoSuccess'));
+      setUndoDistId(null);
+      await qc.invalidateQueries({ queryKey: ['distributions'] });
+      await qc.invalidateQueries({ queryKey: ['distributions', 'by-area'] });
+      await qc.invalidateQueries({ queryKey: ['dashboard-summary'] });
+      await qc.invalidateQueries({ queryKey: ['stock'] });
+      await qc.invalidateQueries({ queryKey: ['beneficiaries-history'] });
+      await qc.invalidateQueries({ queryKey: ['weekly-tracking'] });
+    } catch (e: unknown) {
+      toast.error(
+        (e as { response?: { data?: { message?: string } } })?.response?.data?.message ?? t('distributions.undoError'),
+      );
+    } finally {
+      setUndoPending(false);
     }
   }
 
@@ -426,7 +450,19 @@ export function DistributionsPage() {
                           </Button>
                         ) : null}
                         {d.status === 'DELIVERED' ? (
-                          <span className="text-xs text-muted-foreground">{t('distributions.deliveredBadge')}</span>
+                          <div className="space-y-2">
+                            <span className="text-xs text-muted-foreground">{t('distributions.deliveredBadge')}</span>
+                            {role === 'SUPER_ADMIN' ? (
+                              <Button
+                                className="h-9 w-full px-2 text-xs"
+                                variant="outline"
+                                type="button"
+                                onClick={() => setUndoDistId(d.id)}
+                              >
+                                {t('distributions.undoConfirmation')}
+                              </Button>
+                            ) : null}
+                          </div>
                         ) : null}
                       </td>
                     </tr>
@@ -524,7 +560,19 @@ export function DistributionsPage() {
                       </Button>
                     ) : null}
                     {d.status === 'DELIVERED' ? (
-                      <span className="text-xs text-muted-foreground">{t('distributions.deliveredBadge')}</span>
+                      <div className="space-y-2">
+                        <span className="text-xs text-muted-foreground">{t('distributions.deliveredBadge')}</span>
+                        {role === 'SUPER_ADMIN' ? (
+                          <Button
+                            className="h-9 w-full px-2 text-xs"
+                            variant="outline"
+                            type="button"
+                            onClick={() => setUndoDistId(d.id)}
+                          >
+                            {t('distributions.undoConfirmation')}
+                          </Button>
+                        ) : null}
+                      </div>
                     ) : null}
                   </div>
                 </div>
@@ -549,6 +597,24 @@ export function DistributionsPage() {
           </>
         )}
       </Card>
+
+      <Dialog
+        open={Boolean(undoDistId)}
+        onClose={() => !undoPending && setUndoDistId(null)}
+        title={t('distributions.undoConfirmationTitle')}
+        footer={
+          <>
+            <Button variant="outline" type="button" disabled={undoPending} onClick={() => setUndoDistId(null)}>
+              {t('common.cancel')}
+            </Button>
+            <Button type="button" variant="primary" disabled={undoPending} onClick={() => void undoDeliveryConfirmation()}>
+              {undoPending ? t('common.saving') : t('common.confirm')}
+            </Button>
+          </>
+        }
+      >
+        <p className="text-sm text-muted-foreground">{t('distributions.undoConfirmationBody')}</p>
+      </Dialog>
 
       <Dialog
         open={Boolean(deliverId)}
