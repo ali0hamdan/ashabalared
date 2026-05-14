@@ -25,8 +25,10 @@ export function BeneficiaryStatusBadge({ status }: { status: string }) {
   const variant =
     status === 'ACTIVE'
       ? ('success' as const)
-      : status === 'INACTIVE' || status === 'ARCHIVED'
-        ? ('neutral' as const)
-        : ('default' as const);
+      : status === 'INACTIVE'
+        ? ('danger' as const)
+        : status === 'ARCHIVED'
+          ? ('neutral' as const)
+          : ('default' as const);
   return <Badge variant={variant}>{label}</Badge>;
 }
