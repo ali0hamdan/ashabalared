@@ -6,6 +6,7 @@ export const BENEFICIARY_AREA_VALUES = [
   'Beirut Gharbiye',
   'Beirut Idariye',
   'Mant2a Al Sharkiye',
+  'Quennarit',
   'Shwayfet',
   'Dahye',
   'Bshemoun',
@@ -13,7 +14,6 @@ export const BENEFICIARY_AREA_VALUES = [
   'Khalde',
   'Hermel',
   'Baalback',
-  'Quennarit',
 ] as const;
 
 export type BeneficiaryAreaValue = (typeof BENEFICIARY_AREA_VALUES)[number];
