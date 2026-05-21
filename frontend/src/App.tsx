@@ -5,6 +5,7 @@ import { BeneficiariesPage } from '@/pages/BeneficiariesPage';
 import { BeneficiaryDetailPage } from '@/pages/BeneficiaryDetailPage';
 import { BeneficiaryNewPage } from '@/pages/BeneficiaryNewPage';
 import { BeneficiariesHistoryPage } from '@/pages/BeneficiariesHistoryPage';
+import { NotReceivedPage } from '@/pages/NotReceivedPage';
 import { CategoriesPage } from '@/pages/CategoriesPage';
 import { StockPage } from '@/pages/StockPage';
 import { DistributionsPage } from '@/pages/DistributionsPage';
@@ -56,6 +57,14 @@ export default function App() {
             <Route path="/app/beneficiaries/new" element={<BeneficiaryNewPage />} />
             <Route path="/app/beneficiaries/:id" element={<BeneficiaryDetailPage />} />
             <Route path="/app/beneficiaries-history" element={<BeneficiariesHistoryPage />} />
+            <Route
+              path="/app/not-received"
+              element={
+                <RequireRole allow={['SUPER_ADMIN', 'ADMIN']}>
+                  <NotReceivedPage />
+                </RequireRole>
+              }
+            />
             <Route
               path="/app/categories"
               element={

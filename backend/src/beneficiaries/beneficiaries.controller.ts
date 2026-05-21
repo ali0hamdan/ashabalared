@@ -70,6 +70,40 @@ export class BeneficiariesController {
     res.send(`\uFEFF${csv}`);
   }
 
+  /**
+   * Active beneficiaries who have not received delivered aid for the selected filters.
+   * Must be registered before `@Get(':id')`.
+   */
+  @Get('not-received')
+  @Roles(RoleCode.SUPER_ADMIN, RoleCode.ADMIN)
+  listNotReceived(
+    @CurrentUser() actor: AuthUser,
+    @Query('aidCategoryId') aidCategoryId?: string,
+    @Query('dateFrom') dateFrom?: string,
+    @Query('dateTo') dateTo?: string,
+    @Query('period') period?: string,
+    @Query('q') q?: string,
+    @Query('search') search?: string,
+    @Query('sortBy') sortBy?: string,
+    @Query('sortDirection') sortDirection?: string,
+    @Query('includeInactive') includeInactive?: string,
+    @Query('page') page?: string,
+    @Query('limit') limit?: string,
+  ) {
+    return this.beneficiaries.listNotReceived(actor, {
+      aidCategoryId,
+      dateFrom,
+      dateTo,
+      period,
+      q: q?.trim() || search?.trim() || undefined,
+      sortBy,
+      sortDirection,
+      includeInactive,
+      page,
+      limit,
+    });
+  }
+
   /** Duplicate detection for create/edit forms. Must be registered before `@Get(':id')`. */
   @Get('duplicate-check')
   @Roles(RoleCode.SUPER_ADMIN, RoleCode.ADMIN)

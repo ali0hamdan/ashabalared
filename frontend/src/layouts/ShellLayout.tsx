@@ -16,6 +16,7 @@ import {
   X,
   History,
   CalendarDays,
+  UserRoundX,
 } from 'lucide-react';
 import { NavLink, Outlet, useLocation, useNavigate } from 'react-router-dom';
 import { toast } from 'sonner';
@@ -38,6 +39,12 @@ function getNavItems(): NavItem[] {
       to: '/app/beneficiaries-history',
       labelKey: 'nav.beneficiariesHistory',
       icon: History,
+      roles: ['SUPER_ADMIN', 'ADMIN'],
+    },
+    {
+      to: '/app/not-received',
+      labelKey: 'nav.notReceived',
+      icon: UserRoundX,
       roles: ['SUPER_ADMIN', 'ADMIN'],
     },
     { to: '/app/categories', labelKey: 'nav.categories', icon: Package, roles: ['SUPER_ADMIN', 'ADMIN'] },
