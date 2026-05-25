@@ -39,6 +39,7 @@ import {
   parsePaginationQuery,
   type PaginatedResult,
 } from '../common/pagination';
+import { buildCsvDocument } from '../common/csv';
 
 /** Stored when no phone is supplied (non-empty display; satisfies legacy min length). */
 const BENEFICIARY_PHONE_NOT_PROVIDED = 'غير متوفر';
@@ -1132,6 +1133,145 @@ export class BeneficiariesService {
     };
   }
 
+  /**
+   * Beneficiary has requested/needs the given aid category (category-level row or item-level need).
+   */
+  /** Matches getNeedsSummary inclusion rules (real need, not empty placeholder rows). */
+  private buildBeneficiaryNeedsAidCategoryFilter(
+    categoryId: string,
+  ): Prisma.BeneficiaryWhereInput {
+    return {
+      OR: [
+        {
+          categories: {
+            some: {
+              categoryId,
+              OR: [
+                { quantity: { gte: 1 } },
+                { AND: [{ notes: { not: null } }, { notes: { not: '' } }] },
+              ],
+            },
+          },
+        },
+        {
+          itemNeeds: {
+            some: {
+              needed: true,
+              aidCategoryItem: { aidCategoryId: categoryId },
+              OR: [
+                { quantity: { gte: 1 } },
+                { AND: [{ notes: { not: null } }, { notes: { not: '' } }] },
+              ],
+            },
+          },
+        },
+      ],
+    };
+  }
+
+  /** In-memory check after fetch (must match Prisma needs filter). */
+  private beneficiaryNeedsAidCategory(
+    b: {
+      categories?: Array<{
+        categoryId: string;
+        quantity?: number;
+        notes?: string | null;
+      }>;
+      itemNeeds?: Array<{
+        needed: boolean;
+        quantity: number;
+        notes?: string | null;
+        aidCategoryItem?: { aidCategoryId: string } | null;
+      }>;
+    },
+    categoryId: string,
+  ): boolean {
+    if (
+      b.categories?.some((c) => {
+        const cid = c.categoryId ?? '';
+        if (cid !== categoryId) return false;
+        const q = c.quantity ?? 0;
+        const note = c.notes?.trim() ?? '';
+        return q >= 1 || note.length > 0;
+      })
+    ) {
+      return true;
+    }
+    return (b.itemNeeds ?? []).some((n) => {
+      if (!n.needed || n.aidCategoryItem?.aidCategoryId !== categoryId) {
+        return false;
+      }
+      const q = n.quantity ?? 0;
+      const note = n.notes?.trim() ?? '';
+      return q >= 1 || note.length > 0;
+    });
+  }
+
+  /** Category names the beneficiary actually needs (aligned with getNeedsSummary). */
+  private neededCategoryNamesForNotReceived(
+    b: {
+      categories?: Array<{
+        categoryId?: string;
+        quantity?: number;
+        notes?: string | null;
+        category?: { id?: string; name: string } | null;
+      }>;
+      itemNeeds?: Array<{
+        needed: boolean;
+        quantity: number;
+        notes?: string | null;
+        aidCategoryItem?: {
+          aidCategoryId: string;
+          aidCategory?: { id?: string; name: string } | null;
+        } | null;
+      }>;
+    },
+    filterCategoryId?: string,
+    selectedCategoryName?: string | null,
+  ): string[] {
+    const names = new Set<string>();
+
+    for (const c of b.categories ?? []) {
+      const q = c.quantity ?? 0;
+      const note = c.notes?.trim() ?? '';
+      if (q < 1 && !note.length) continue;
+      const name = c.category?.name?.trim();
+      if (name) names.add(name);
+    }
+
+    for (const n of b.itemNeeds ?? []) {
+      if (!n.needed) continue;
+      const q = n.quantity ?? 0;
+      const note = n.notes?.trim() ?? '';
+      if (q < 1 && !note.length) continue;
+      const name = n.aidCategoryItem?.aidCategory?.name?.trim();
+      if (name) names.add(name);
+    }
+
+    if (filterCategoryId) {
+      if (
+        !this.beneficiaryNeedsAidCategory(
+          {
+            categories: (b.categories ?? []).map((c) => ({
+              categoryId: c.categoryId ?? c.category?.id ?? '',
+              quantity: c.quantity,
+              notes: c.notes,
+            })),
+            itemNeeds: b.itemNeeds,
+          },
+          filterCategoryId,
+        )
+      ) {
+        return [];
+      }
+      if (selectedCategoryName?.trim()) {
+        names.add(selectedCategoryName.trim());
+      }
+    }
+
+    return [...names].sort((a, c) => a.localeCompare(c));
+  }
+
   private beneficiarySearchOr(q: string): Prisma.BeneficiaryWhereInput {
     const iq = q;
     return {
@@ -1155,29 +1295,51 @@ export class BeneficiariesService {
     };
   }
 
-  private neededCategoryLabelsFromBeneficiary(b: {
-    itemNeeds?: Array<{
-      needed: boolean;
-      quantity: number;
-      aidCategoryItem?: { name: string } | null;
-    }>;
-    categories?: Array<{
-      quantity: number;
-      category?: { name: string } | null;
-    }>;
-  }): string[] {
-    const items = (b.itemNeeds ?? []).filter(
-      (n) => n.needed && (n.quantity ?? 0) >= 1,
-    );
+  private neededCategoryLabelsFromBeneficiary(
+    b: {
+      itemNeeds?: Array<{
+        needed: boolean;
+        quantity: number;
+        aidCategoryItem?: {
+          name: string;
+          aidCategoryId?: string;
+          aidCategory?: { name: string } | null;
+        } | null;
+      }>;
+      categories?: Array<{
+        categoryId?: string;
+        quantity: number;
+        category?: { id?: string; name: string } | null;
+      }>;
+    },
+    filterCategoryId?: string,
+  ): string[] {
+    const itemRows = (b.itemNeeds ?? []).filter((n) => {
+      if (!n.needed) return false;
+      if (filterCategoryId) {
+        return n.aidCategoryItem?.aidCategoryId === filterCategoryId;
+      }
+      return (n.quantity ?? 0) >= 1;
+    });
     const fromItems = [
       ...new Set(
-        items
-          .map((n) => n.aidCategoryItem?.name?.trim())
+        itemRows
+          .map(
+            (n) =>
+              n.aidCategoryItem?.name?.trim() ||
+              n.aidCategoryItem?.aidCategory?.name?.trim(),
+          )
           .filter((x): x is string => Boolean(x)),
       ),
     ].sort((a, c) => a.localeCompare(c));
     if (fromItems.length) return fromItems;
-    const cats = b.categories ?? [];
+
+    const cats = (b.categories ?? []).filter(
+      (n) =>
+        !filterCategoryId ||
+        n.categoryId === filterCategoryId ||
+        n.category?.id === filterCategoryId,
+    );
     return [
       ...new Set(
         cats
@@ -1235,72 +1397,34 @@ export class BeneficiariesService {
     };
   }
 
-  /**
-   * Active beneficiaries who have not received delivered aid matching filters.
-   * Category filter: exclude only if they received that category in the period.
-   * Period `all`: never received (matching category scope) ever.
-   */
-  async listNotReceived(
-    actor: AuthUser,
-    query: {
-      aidCategoryId?: string;
-      dateFrom?: string;
-      dateTo?: string;
-      period?: string;
-      q?: string;
-      sortBy?: string;
-      sortDirection?: string;
-      includeInactive?: string;
-      page?: string;
-      limit?: string;
-    },
-  ): Promise<PaginatedResult<Record<string, unknown>>> {
-    const period = this.parseNotReceivedPeriod(
-      query.period,
-      query.dateFrom,
-      query.dateTo,
-    );
+  private static readonly MAX_NOT_RECEIVED = 5000;
 
-    let categoryId: string | undefined;
-    const rawCat = query.aidCategoryId?.trim();
-    if (rawCat) {
-      const n = await this.prisma.aidCategory.count({ where: { id: rawCat } });
-      if (!n) throw new BadRequestException('Invalid aid category');
-      categoryId = rawCat;
+  private formatNotReceivedPeriodLabel(
+    period: { kind: 'all' | 'range'; from?: Date; to?: Date },
+    periodKey?: string,
+    dateFrom?: string,
+    dateTo?: string,
+  ): string {
+    const key = (periodKey?.trim() || 'all').toLowerCase();
+    if (key === '7d') return 'Last 7 days';
+    if (key === '30d') return 'Last 30 days';
+    if (key === 'custom' && dateFrom && dateTo) {
+      return `${dateFrom} to ${dateTo}`;
     }
-
-    const includeInactive =
-      actor.roleCode === RoleCode.SUPER_ADMIN &&
-      parseIncludeInactive(query.includeInactive);
-
-    const where: Prisma.BeneficiaryWhereInput = {
-      deletedAt: null,
-      status: includeInactive
-        ? { in: [BeneficiaryStatus.ACTIVE, BeneficiaryStatus.INACTIVE] }
-        : BeneficiaryStatus.ACTIVE,
-      NOT: {
-        distributions: {
-          some: this.buildReceivedInPeriodDistributionFilter(
-            period,
-            categoryId,
-          ),
-        },
-      },
-    };
-
-    const qTrim = query.q?.trim();
-    if (qTrim) {
-      const existingAnd = where.AND;
-      const andList = Array.isArray(existingAnd)
-        ? existingAnd
-        : existingAnd
-          ? [existingAnd]
-          : [];
-      where.AND = [...andList, this.beneficiarySearchOr(qTrim)];
+    if (period.kind === 'range' && period.from && period.to) {
+      const f = period.from.toISOString().slice(0, 10);
+      const t = period.to.toISOString().slice(0, 10);
+      return `${f} to ${t}`;
     }
+    return 'All time';
+  }
 
-    const sortByRaw = (query.sortBy?.trim() || 'lastReceivedAt').toLowerCase();
-    const sortDirRaw = (query.sortDirection?.trim() || 'asc').toLowerCase();
+  private parseNotReceivedSort(
+    sortBy?: string,
+    sortDirection?: string,
+  ): { sortByRaw: string; asc: boolean } {
+    const sortByRaw = (sortBy?.trim() || 'lastReceivedAt').toLowerCase();
+    const sortDirRaw = (sortDirection?.trim() || 'asc').toLowerCase();
     if (!['lastreceivedat', 'createdat', 'fullname'].includes(sortByRaw)) {
       throw new BadRequestException(
         'sortBy must be lastReceivedAt, createdAt, or fullName',
@@ -1309,26 +1433,112 @@ export class BeneficiariesService {
     if (!['asc', 'desc'].includes(sortDirRaw)) {
       throw new BadRequestException('sortDirection must be asc or desc');
     }
-    const asc = sortDirRaw === 'asc';
+    return { sortByRaw, asc: sortDirRaw === 'asc' };
+  }
 
-    const { page, limit, skip } = parsePaginationQuery({
-      page: query.page,
-      limit: query.limit,
-    });
+  private async resolveNotReceivedQuery(
+    actor: AuthUser,
+    query: {
+      aidCategoryId?: string;
+      dateFrom?: string;
+      dateTo?: string;
+      period?: string;
+      q?: string;
+      includeInactive?: string;
+    },
+  ) {
+    const period = this.parseNotReceivedPeriod(
+      query.period,
+      query.dateFrom,
+      query.dateTo,
+    );
 
-    const MAX_NOT_RECEIVED = 5000;
+    let categoryId: string | undefined;
+    let selectedCategoryName: string | null = null;
+    const rawCat = query.aidCategoryId?.trim();
+    if (rawCat) {
+      const cat = await this.prisma.aidCategory.findUnique({
+        where: { id: rawCat },
+        select: { id: true, name: true },
+      });
+      if (!cat) throw new BadRequestException('Invalid aid category');
+      categoryId = cat.id;
+      selectedCategoryName = cat.name;
+    }
 
-    const rows = await this.prisma.beneficiary.findMany({
+    const includeInactive =
+      actor.roleCode === RoleCode.SUPER_ADMIN &&
+      parseIncludeInactive(query.includeInactive);
+
+    const qTrim = query.q?.trim();
+    const whereAnd: Prisma.BeneficiaryWhereInput[] = [
+      { deletedAt: null },
+      {
+        status: includeInactive
+          ? { in: [BeneficiaryStatus.ACTIVE, BeneficiaryStatus.INACTIVE] }
+          : BeneficiaryStatus.ACTIVE,
+      },
+      {
+        NOT: {
+          distributions: {
+            some: this.buildReceivedInPeriodDistributionFilter(
+              period,
+              categoryId,
+            ),
+          },
+        },
+      },
+    ];
+    if (categoryId) {
+      whereAnd.push(this.buildBeneficiaryNeedsAidCategoryFilter(categoryId));
+    }
+    if (qTrim) {
+      whereAnd.push(this.beneficiarySearchOr(qTrim));
+    }
+    const where: Prisma.BeneficiaryWhereInput = { AND: whereAnd };
+
+    const periodLabel = this.formatNotReceivedPeriodLabel(
+      period,
+      query.period,
+      query.dateFrom,
+      query.dateTo,
+    );
+
+    return {
       where,
-      take: MAX_NOT_RECEIVED,
-      include: {
+      period,
+      categoryId,
+      selectedCategoryName,
+      periodLabel,
+    };
+  }
+
+  private notReceivedPrismaInclude(
+    categoryId: string | undefined,
+    mode: 'list' | 'export',
+  ): Prisma.BeneficiaryInclude {
+    if (mode === 'export') {
+      return {
         categories: {
-          include: { category: { select: { name: true } } },
+          include: { category: { select: { id: true, name: true } } },
         },
         itemNeeds: {
-          where: { needed: true, quantity: { gte: 1 } },
+          where: { needed: true },
           include: {
-            aidCategoryItem: { select: { name: true } },
+            aidCategoryItem: {
+              select: {
+                name: true,
+                aidCategoryId: true,
+                aidCategory: { select: { id: true, name: true } },
+              },
+            },
+          },
+        },
+        _count: {
+          select: {
+            distributions: {
+              where: { status: DistributionStatus.DELIVERED },
+            },
           },
         },
         distributions: {
@@ -1348,42 +1558,63 @@ export class BeneficiariesService {
             },
           },
         },
-      },
-    });
-
-    const mapped = rows.map((b) => {
-      const last = this.lastDeliverySummary(b.distributions);
-      const neverReceivedAny = last.lastReceivedAt === null;
-      let notReceivedReason: string;
-      if (neverReceivedAny) {
-        notReceivedReason = 'Never received aid';
-      } else if (categoryId) {
-        notReceivedReason = 'Did not receive selected category';
-      } else if (period.kind === 'range') {
-        notReceivedReason = 'Not received in selected period';
-      } else {
-        notReceivedReason = 'Not received (filter)';
-      }
-
-      return {
-        id: b.id,
-        fullName: b.fullName,
-        phone: b.phone,
-        area: b.area,
-        street: b.addressLine?.trim() || null,
-        householdSize: b.familyCount,
-        status: b.status,
-        createdAt: b.createdAt.toISOString(),
-        neededCategories: this.neededCategoryLabelsFromBeneficiary(b),
-        lastReceivedAt: last.lastReceivedAt,
-        lastReceivedCategory: last.lastReceivedCategory,
-        lastReceivedItems: last.lastReceivedItems,
-        neverReceivedAny,
-        notReceivedReason,
       };
-    });
+    }
+    return {
+      categories: {
+        include: { category: { select: { id: true, name: true } } },
+      },
+      itemNeeds: {
+        where: { needed: true },
+        include: {
+          aidCategoryItem: {
+            select: {
+              name: true,
+              aidCategoryId: true,
+              aidCategory: { select: { id: true, name: true } },
+            },
+          },
+        },
+      },
+      distributions: {
+        where: { status: DistributionStatus.DELIVERED },
+        orderBy: [{ deliveredAt: 'desc' }, { updatedAt: 'desc' }],
+        take: 1,
+        select: {
+          deliveredAt: true,
+          updatedAt: true,
+          items: {
+            select: {
+              quantityDelivered: true,
+              quantityPlanned: true,
+              aidCategory: { select: { name: true } },
+              aidCategoryItem: { select: { name: true } },
+            },
+          },
+        },
+      },
+    };
+  }
 
-    const sorted = [...mapped].sort((a, b) => {
+  private notReceivedReasonForRow(
+    neverReceivedAny: boolean,
+    categoryId: string | undefined,
+    period: { kind: 'all' | 'range' },
+  ): string {
+    if (neverReceivedAny) return 'Never received aid';
+    if (categoryId) return 'Did not receive selected category';
+    if (period.kind === 'range') return 'Not received in selected period';
+    return 'Not received (filter)';
+  }
+
+  private sortNotReceivedMapped<
+    T extends {
+      fullName: string;
+      createdAt: string;
+      lastReceivedAt: string | null;
+    },
+  >(rows: T[], sortByRaw: string, asc: boolean): T[] {
+    return [...rows].sort((a, b) => {
       if (sortByRaw === 'fullname') {
         const c = a.fullName.localeCompare(b.fullName);
         return asc ? c : -c;
@@ -1404,11 +1635,400 @@ export class BeneficiariesService {
       if (bMs === null) return asc ? 1 : -1;
       return asc ? aMs - bMs : bMs - aMs;
     });
+  }
 
-    const total = sorted.length;
-    const data = sorted.slice(skip, skip + limit);
+  private allNeededCategoriesLabels(
+    b: Parameters<BeneficiariesService['neededCategoryNamesForNotReceived']>[0],
+  ): string[] {
+    return this.neededCategoryNamesForNotReceived(b);
+  }
 
+  private notReceivedLastDistributions(
+    b: { distributions: unknown },
+  ): Parameters<BeneficiariesService['lastDeliverySummary']>[0] {
+    return b.distributions as Parameters<
+      BeneficiariesService['lastDeliverySummary']
+    >[0];
+  }
+
+  private mapNotReceivedListRow(
+    b: {
+      id: string;
+      fullName: string;
+      phone: string;
+      area: string | null;
+      addressLine: string | null;
+      familyCount: number;
+      status: BeneficiaryStatus;
+      createdAt: Date;
+      categories?: Array<{
+        categoryId: string;
+        quantity?: number;
+        notes?: string | null;
+        category?: { id: string; name: string } | null;
+      }>;
+      itemNeeds?: Array<{
+        needed: boolean;
+        quantity: number;
+        aidCategoryItem?: {
+          name: string;
+          aidCategoryId: string;
+          aidCategory?: { name: string } | null;
+        } | null;
+      }>;
+      distributions: unknown;
+    },
+    ctx: {
+      categoryId?: string;
+      selectedCategoryName: string | null;
+      period: { kind: 'all' | 'range' };
+    },
+  ) {
+    const last = this.lastDeliverySummary(this.notReceivedLastDistributions(b));
+    const neverReceivedAny = last.lastReceivedAt === null;
+    return {
+      id: b.id,
+      fullName: b.fullName,
+      phone: b.phone,
+      area: b.area,
+      street: b.addressLine?.trim() || null,
+      householdSize: b.familyCount,
+      status: b.status,
+      createdAt: b.createdAt.toISOString(),
+      neededCategories: this.neededCategoryNamesForNotReceived(
+        b,
+        ctx.categoryId,
+        ctx.selectedCategoryName,
+      ),
+      selectedAidCategoryId: ctx.categoryId ?? null,
+      selectedAidCategoryName: ctx.selectedCategoryName,
+      lastReceivedAt: last.lastReceivedAt,
+      lastReceivedCategory: last.lastReceivedCategory,
+      lastReceivedItems: last.lastReceivedItems,
+      neverReceivedAny,
+      notReceivedReason: this.notReceivedReasonForRow(
+        neverReceivedAny,
+        ctx.categoryId,
+        ctx.period,
+      ),
+    };
+  }
+
+  private mapNotReceivedExportRow(
+    b: {
+      id: string;
+      fullName: string;
+      phone: string;
+      area: string | null;
+      addressLine: string | null;
+      familyCount: number;
+      status: BeneficiaryStatus;
+      cookingStove: boolean;
+      createdAt: Date;
+      notes: string | null;
+      categories?: Array<{
+        categoryId: string;
+        quantity: number;
+        notes: string | null;
+        category?: { id: string; name: string } | null;
+      }>;
+      itemNeeds?: Array<{
+        needed: boolean;
+        quantity: number;
+        notes: string | null;
+        aidCategoryItem?: {
+          name: string;
+          aidCategoryId: string;
+          aidCategory?: { id: string; name: string } | null;
+        } | null;
+      }>;
+      distributions: unknown;
+      _count?: { distributions: number };
+    },
+    ctx: {
+      categoryId?: string;
+      selectedCategoryName: string | null;
+      period: { kind: 'all' | 'range' };
+      periodLabel: string;
+    },
+  ) {
+    const last = this.lastDeliverySummary(this.notReceivedLastDistributions(b));
+    const neverReceivedAny = last.lastReceivedAt === null;
+    const street = b.addressLine?.trim() || '';
+    const area = b.area?.trim() || '';
+    const needs = this.formatNeedsForExport(b);
+    return {
+      id: b.id,
+      fullName: b.fullName,
+      phone: b.phone,
+      area: b.area,
+      street: street || null,
+      fullAddress: [area, street].filter(Boolean).join(' / '),
+      householdSize: b.familyCount,
+      status: b.status,
+      cookingStove: b.cookingStove,
+      createdAt: b.createdAt.toISOString(),
+      allNeededCategories: this.allNeededCategoriesLabels(b),
+      neededCategories: this.neededCategoryNamesForNotReceived(
+        b,
+        ctx.categoryId,
+        ctx.selectedCategoryName,
+      ),
+      neededItems: needs.items,
+      neededQuantities: needs.quantities,
+      needNotes: needs.notes,
+      beneficiaryNotes: (b.notes ?? '').replace(/\r?\n/g, ' '),
+      selectedAidCategoryId: ctx.categoryId ?? null,
+      selectedAidCategoryName: ctx.selectedCategoryName,
+      selectedPeriodLabel: ctx.periodLabel,
+      lastReceivedAt: last.lastReceivedAt,
+      lastReceivedCategory: last.lastReceivedCategory,
+      lastReceivedItems: last.lastReceivedItems,
+      neverReceivedAny,
+      notReceivedReason: this.notReceivedReasonForRow(
+        neverReceivedAny,
+        ctx.categoryId,
+        ctx.period,
+      ),
+      totalDeliveredDistributions: b._count?.distributions ?? 0,
+      lastDistributionDate: last.lastReceivedAt ?? 'Never',
+      lastDeliveredItems: last.lastReceivedItems.join('; '),
+      eligibleForSelectedCategory: ctx.categoryId ? 'Yes' : 'N/A',
+      hasReceivedSelectedCategory: 'No',
+      notReceivedStatus: neverReceivedAny
+        ? 'Never'
+        : 'Not received (filter match)',
+    };
+  }
+
+  private formatNeedsForExport(b: {
+    categories?: Array<{
+      quantity: number;
+      notes: string | null;
+      category?: { name: string } | null;
+    }>;
+    itemNeeds?: Array<{
+      needed: boolean;
+      quantity: number;
+      notes: string | null;
+      aidCategoryItem?: { name: string } | null;
+    }>;
+  }): { items: string; quantities: string; notes: string } {
+    const itemParts: string[] = [];
+    const qtyParts: string[] = [];
+    const noteParts: string[] = [];
+
+    for (const c of b.categories ?? []) {
+      const name = c.category?.name?.trim();
+      if (!name) continue;
+      itemParts.push(`${name} (category)`);
+      qtyParts.push(String(c.quantity ?? 0));
+      if (c.notes?.trim()) noteParts.push(`${name}: ${c.notes.trim()}`);
+    }
+
+    for (const n of b.itemNeeds ?? []) {
+      if (!n.needed) continue;
+      const name = n.aidCategoryItem?.name?.trim();
+      if (!name) continue;
+      itemParts.push(name);
+      qtyParts.push(String(n.quantity ?? 0));
+      if (n.notes?.trim()) noteParts.push(`${name}: ${n.notes.trim()}`);
+    }
+
+    return {
+      items: itemParts.join('; '),
+      quantities: qtyParts.join('; '),
+      notes: noteParts.join('; '),
+    };
+  }
+
+  private async queryNotReceivedSorted(
+    actor: AuthUser,
+    query: {
+      aidCategoryId?: string;
+      dateFrom?: string;
+      dateTo?: string;
+      period?: string;
+      q?: string;
+      sortBy?: string;
+      sortDirection?: string;
+      includeInactive?: string;
+    },
+    mode: 'list' | 'export',
+  ) {
+    const ctx = await this.resolveNotReceivedQuery(actor, query);
+    const { sortByRaw, asc } = this.parseNotReceivedSort(
+      query.sortBy,
+      query.sortDirection,
+    );
+
+    const fetched = await this.prisma.beneficiary.findMany({
+      where: ctx.where,
+      take: BeneficiariesService.MAX_NOT_RECEIVED,
+      include: this.notReceivedPrismaInclude(ctx.categoryId, mode),
+    });
+
+    const rows = ctx.categoryId
+      ? fetched.filter((b) =>
+          this.beneficiaryNeedsAidCategory(b, ctx.categoryId!),
+        )
+      : fetched;
+
+    const capped = fetched.length >= BeneficiariesService.MAX_NOT_RECEIVED;
+
+    const mapped =
+      mode === 'list'
+        ? rows.map((b) => this.mapNotReceivedListRow(b, ctx))
+        : rows.map((b) =>
+            this.mapNotReceivedExportRow(
+              b as Parameters<BeneficiariesService['mapNotReceivedExportRow']>[0],
+              ctx,
+            ),
+          );
+
+    const sorted = this.sortNotReceivedMapped(mapped, sortByRaw, asc);
+    return {
+      rows: sorted,
+      total: sorted.length,
+      capped,
+      periodLabel: ctx.periodLabel,
+      selectedCategoryName: ctx.selectedCategoryName,
+    };
+  }
+
+  /**
+   * Active beneficiaries who have not received delivered aid matching filters.
+   * When `aidCategoryId` is set: only beneficiaries who need that category
+   * (BeneficiaryCategory row or item need under the category), and who did not
+   * receive it in the selected period. All categories: anyone not yet received
+   * per period (no need filter).
+   */
+  async listNotReceived(
+    actor: AuthUser,
+    query: {
+      aidCategoryId?: string;
+      dateFrom?: string;
+      dateTo?: string;
+      period?: string;
+      q?: string;
+      sortBy?: string;
+      sortDirection?: string;
+      includeInactive?: string;
+      page?: string;
+      limit?: string;
+    },
+  ): Promise<PaginatedResult<Record<string, unknown>>> {
+    const { page, limit, skip } = parsePaginationQuery({
+      page: query.page,
+      limit: query.limit,
+    });
+
+    const { rows, total } = await this.queryNotReceivedSorted(actor, query, 'list');
+    const data = rows.slice(skip, skip + limit);
     return buildPaginatedResult(data, total, page, limit);
+  }
+
+  async exportNotReceivedCsv(
+    actor: AuthUser,
+    query: {
+      aidCategoryId?: string;
+      dateFrom?: string;
+      dateTo?: string;
+      period?: string;
+      q?: string;
+      sortBy?: string;
+      sortDirection?: string;
+      includeInactive?: string;
+    },
+  ): Promise<{ csv: string; filename: string }> {
+    const { rows, capped, selectedCategoryName } =
+      await this.queryNotReceivedSorted(actor, query, 'export');
+
+    if (capped) {
+      throw new BadRequestException(
+        `Export limited to ${BeneficiariesService.MAX_NOT_RECEIVED} rows. Narrow your filters.`,
+      );
+    }
+
+    const exportRows = rows as ReturnType<
+      BeneficiariesService['mapNotReceivedExportRow']
+    >[];
+
+    const header = [
+      'Beneficiary ID',
+      'Full name',
+      'Phone',
+      'Area',
+      'Street / address details',
+      'Full address',
+      'Household size',
+      'Status',
+      'Can cook',
+      'Created date',
+      'All needed categories',
+      'Needed categories (filter scope)',
+      'Needed items',
+      'Needed quantities',
+      'Need notes',
+      'Beneficiary notes',
+      'Selected Aid Category',
+      'Selected period',
+      'Last received date',
+      'Last received category',
+      'Last received items',
+      'Not received reason',
+      'Total distributions received',
+      'Last distribution date',
+      'Last delivered items',
+      'Eligible for selected category',
+      'Has received selected category',
+      'Not received status',
+    ];
+
+    const csvRows = exportRows.map((r) => [
+      r.id,
+      r.fullName,
+      r.phone,
+      r.area ?? '',
+      r.street ?? '',
+      r.fullAddress,
+      r.householdSize,
+      r.status,
+      r.cookingStove ? 'Yes' : 'No',
+      r.createdAt,
+      r.allNeededCategories.join('; '),
+      r.neededCategories.join('; '),
+      r.neededItems,
+      r.neededQuantities,
+      r.needNotes,
+      r.beneficiaryNotes,
+      r.selectedAidCategoryName ?? 'All categories',
+      r.selectedPeriodLabel,
+      r.lastReceivedAt ?? 'Never',
+      r.lastReceivedCategory ?? '',
+      r.lastReceivedItems.join('; '),
+      r.notReceivedReason,
+      r.totalDeliveredDistributions,
+      r.lastDistributionDate,
+      r.lastDeliveredItems,
+      r.eligibleForSelectedCategory,
+      r.hasReceivedSelectedCategory,
+      r.notReceivedStatus,
+    ]);
+
+    const datePart = new Date().toISOString().slice(0, 10);
+    const catSlug = selectedCategoryName
+      ? selectedCategoryName
+          .replace(/[^\w\u0600-\u06FF-]+/g, '-')
+          .replace(/^-|-$/g, '')
+          .slice(0, 40)
+      : 'all-categories';
+    const filename = `not-received-${catSlug}-${datePart}.csv`;
+
+    return {
+      csv: buildCsvDocument(header, csvRows),
+      filename,
+    };
   }
 
   /** Whether a delivered distribution line matches aid category / item filters. */

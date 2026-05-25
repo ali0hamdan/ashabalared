@@ -71,6 +71,46 @@ export class BeneficiariesController {
   }
 
   /**
+   * CSV export for not-received report (same filters as list; all matching rows).
+   * Must be registered before `@Get('not-received')`.
+   */
+  @Get('not-received/export')
+  @Roles(RoleCode.SUPER_ADMIN, RoleCode.ADMIN)
+  async exportNotReceivedCsv(
+    @CurrentUser() actor: AuthUser,
+    @Res() res: Response,
+    @Query('aidCategoryId') aidCategoryId?: string,
+    @Query('dateFrom') dateFrom?: string,
+    @Query('dateTo') dateTo?: string,
+    @Query('period') period?: string,
+    @Query('q') q?: string,
+    @Query('search') search?: string,
+    @Query('sortBy') sortBy?: string,
+    @Query('sortDirection') sortDirection?: string,
+    @Query('includeInactive') includeInactive?: string,
+  ) {
+    const { csv, filename } = await this.beneficiaries.exportNotReceivedCsv(
+      actor,
+      {
+        aidCategoryId,
+        dateFrom,
+        dateTo,
+        period,
+        q: q?.trim() || search?.trim() || undefined,
+        sortBy,
+        sortDirection,
+        includeInactive,
+      },
+    );
+    res.setHeader('Content-Type', 'text/csv; charset=utf-8');
+    res.setHeader(
+      'Content-Disposition',
+      `attachment; filename="${filename}"`,
+    );
+    res.send(`\uFEFF${csv}`);
+  }
+
+  /**
    * Active beneficiaries who have not received delivered aid for the selected filters.
    * Must be registered before `@Get(':id')`.
    */

@@ -248,8 +248,10 @@
     "sortAsc": "تصاعدي",
     "sortDesc": "تنازلي",
     "includeInactive": "تضمين المستفيدين غير النشطين",
+    "exportCsv": "تصدير CSV",
     "resultSummary": "{{total}} مستفيد مطابق",
     "empty": "جميع المستفيدين المطابقين استلموا مساعدة وفق الفلاتر المحددة.",
+    "emptyCategory": "لا يوجد مستفيدون لهذه الفئة وفق الفلاتر المحددة.",
     "never": "أبداً",
     "statusNever": "لم يستلم",
     "statusNotPeriod": "لم يستلم في هذه الفترة",
@@ -268,7 +270,8 @@
     "actionDistribute": "توزيع جديد",
     "pagingPrev": "السابق",
     "pagingNext": "التالي",
-    "pagingSummary": "صفحة {{page}} من {{totalPages}} ({{total}} إجمالاً)"
+    "pagingSummary": "صفحة {{page}} من {{totalPages}} ({{total}} إجمالاً)",
+    "exporting": "جاري التصدير…"
   },
   "adminOverride": {
     "blockedRelations": "العلاقات المانعة",

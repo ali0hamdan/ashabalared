@@ -248,8 +248,10 @@
     "sortAsc": "Ascending",
     "sortDesc": "Descending",
     "includeInactive": "Include inactive beneficiaries",
+    "exportCsv": "Export CSV",
     "resultSummary": "{{total}} matching beneficiaries",
     "empty": "All matching beneficiaries have received aid for the selected filters.",
+    "emptyCategory": "No beneficiaries found for this category and selected filters.",
     "never": "Never",
     "statusNever": "Not received",
     "statusNotPeriod": "Not received this period",
@@ -268,7 +270,8 @@
     "actionDistribute": "New distribution",
     "pagingPrev": "Previous",
     "pagingNext": "Next",
-    "pagingSummary": "Page {{page}} of {{totalPages}} ({{total}} total)"
+    "pagingSummary": "Page {{page}} of {{totalPages}} ({{total}} total)",
+    "exporting": "Exporting…"
   },
   "adminOverride": {
     "blockedRelations": "Blocking relations",

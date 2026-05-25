@@ -88,6 +88,9 @@ model User {
   deliveryAssignments     DeliveryAssignment[]     @relation("DeliveryAssignee")
   assignmentsCreated      DeliveryAssignment[]     @relation("AssignmentCreator")
   stockMovements          StockMovement[]
+
+  @@index([roleId])
+  @@index([isActive])
 }
 
 model RefreshToken {
@@ -97,6 +100,9 @@ model RefreshToken {
   tokenHash String
   expiresAt DateTime
   createdAt DateTime @default(now())
+
+  @@index([userId])
+  @@index([expiresAt])
 }
 
 model Beneficiary {
@@ -128,6 +134,8 @@ model Beneficiary {
   @@index([phone])
   @@index([area])
   @@index([status])
+  @@index([createdAt])
+  @@index([status, area])
 }
 
 model BeneficiaryCategory {
@@ -141,6 +149,8 @@ model BeneficiaryCategory {
   createdAt     DateTime    @default(now())
 
   @@unique([beneficiaryId, categoryId])
+  @@index([categoryId])
+  @@index([beneficiaryId])
 }
 
 // Per-catalog-item need flags and optional qty/notes (checkbox-style workflow).
@@ -159,6 +169,8 @@ model BeneficiaryItemNeed {
   @@unique([beneficiaryId, aidCategoryItemId])
   @@index([beneficiaryId])
   @@index([aidCategoryItemId])
+  @@index([needed])
+  @@index([beneficiaryId, needed])
 }
 
 model BeneficiaryTimelineEvent {
@@ -170,6 +182,9 @@ model BeneficiaryTimelineEvent {
   eventType     String
   relatedId     String?
   createdAt     DateTime    @default(now())
+
+  @@index([beneficiaryId])
+  @@index([beneficiaryId, createdAt])
 }
 
 model AidCategory {
@@ -183,6 +198,8 @@ model AidCategory {
   items                 AidCategoryItem[]
   beneficiaryCategories BeneficiaryCategory[]
   distItems             DistributionRecordItem[]
+
+  @@index([isActive])
 }
 
 model AidCategoryItem {
@@ -197,6 +214,9 @@ model AidCategoryItem {
   stockItem              StockItem?
   distItems              DistributionRecordItem[]
   beneficiaryItemNeeds   BeneficiaryItemNeed[]
+
+  @@index([aidCategoryId])
+  @@index([aidCategoryId, sortOrder])
 }
 
 model StockItem {
@@ -213,6 +233,8 @@ model StockItem {
 
   movements         StockMovement[]
   distributionLines DistributionRecordItem[]
+
+  @@index([quantityOnHand])
 }
 
 model StockMovement {
@@ -227,6 +249,10 @@ model StockMovement {
   createdById   String?
   createdBy     User?             @relation(fields: [createdById], references: [id])
   createdAt     DateTime          @default(now())
+
+  @@index([stockItemId])
+  @@index([stockItemId, createdAt])
+  @@index([referenceType, referenceId])
 }
 
 model DistributionRecord {
@@ -256,7 +282,13 @@ model DistributionRecord {
   @@index([beneficiaryId])
   @@index([driverId])
   @@index([createdById])
+  @@index([completedById])
   @@index([createdAt(sort: Desc)])
+  @@index([deliveredAt])
+  @@index([cancelledAt])
+  @@index([status, deliveredAt])
+  @@index([beneficiaryId, status])
+  @@index([driverId, status])
 }
 
 model DistributionRecordItem {
@@ -271,6 +303,12 @@ model DistributionRecordItem {
   stockItem            StockItem          @relation(fields: [stockItemId], references: [id])
   quantityPlanned      Int
   quantityDelivered    Int                @default(0)
+
+  @@index([distributionRecordId])
+  @@index([aidCategoryId])
+  @@index([aidCategoryItemId])
+  @@index([stockItemId])
+  @@index([distributionRecordId, aidCategoryId])
 }
 
 model DeliveryAssignment {
@@ -283,6 +321,9 @@ model DeliveryAssignment {
   assignedBy           User?              @relation("AssignmentCreator", fields: [assignedById], references: [id])
   assignedAt           DateTime           @default(now())
   note                 String?
+
+  @@index([distributionRecordId])
+  @@index([deliveryUserId])
 }
 
 model AuditLog {
@@ -294,4 +335,9 @@ model AuditLog {
   entityId    String?
   details     Json?
   createdAt   DateTime @default(now())
+
+  @@index([createdAt])
+  @@index([actorUserId])
+  @@index([action])
+  @@index([entityType, entityId])
 }

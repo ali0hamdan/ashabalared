@@ -13,10 +13,11 @@ import type { PaginatedResponse } from '@/lib/paginated';
 import { cn } from '@/lib/utils';
 import { useAuthStore } from '@/store/auth';
 import { useQuery } from '@tanstack/react-query';
-import { ArrowDownAZ, ArrowUpAZ } from 'lucide-react';
-import { useEffect, useMemo, useState } from 'react';
+import { ArrowDownAZ, ArrowUpAZ, Download } from 'lucide-react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Link } from 'react-router-dom';
+import { toast } from 'sonner';
 import type { TFunction } from 'i18next';
 
 type NotReceivedRow = {
@@ -73,6 +74,8 @@ export function NotReceivedPage() {
   const locale = i18n.language.startsWith('ar') ? 'ar' : 'en-US';
   const role = useAuthStore((s) => s.user?.roleCode);
   const isSuperAdmin = role === 'SUPER_ADMIN';
+  /** Page is route-guarded to ADMIN/SUPER_ADMIN; always show export in UI (backend enforces roles). */
+  const showExport = role !== 'DELIVERY';
 
   const [aidCategoryId, setAidCategoryId] = useState('');
   const [period, setPeriod] = useState<PeriodKey>('all');
@@ -85,6 +88,7 @@ export function NotReceivedPage() {
   const [includeInactive, setIncludeInactive] = useState(false);
   const [page, setPage] = useState(1);
   const pageSize = 25;
+  const [exportPending, setExportPending] = useState(false);
 
   useEffect(() => {
     const tmr = window.setTimeout(() => setSearchDebounced(searchInput.trim()), 400);
@@ -150,9 +154,114 @@ export function NotReceivedPage() {
   const totalPages = data?.totalPages ?? 0;
   const neverLabel = t('notReceived.never');
 
+  const exportParams = useMemo(
+    () => ({
+      aidCategoryId: aidCategoryId || undefined,
+      period,
+      dateFrom: period === 'custom' ? dateFrom : undefined,
+      dateTo: period === 'custom' ? dateTo : undefined,
+      search: searchDebounced || undefined,
+      sortBy,
+      sortDirection,
+      includeInactive: isSuperAdmin && includeInactive ? 'true' : undefined,
+    }),
+    [
+      aidCategoryId,
+      period,
+      dateFrom,
+      dateTo,
+      searchDebounced,
+      sortBy,
+      sortDirection,
+      includeInactive,
+      isSuperAdmin,
+    ],
+  );
+
+  const exportCsv = useCallback(async () => {
+    setExportPending(true);
+    try {
+      const res = await api.get('/beneficiaries/not-received/export', {
+        params: exportParams,
+        responseType: 'blob',
+      });
+      const blob = res.data as Blob;
+      if (blob.type.includes('json')) {
+        const text = await blob.text();
+        let message = t('common.exportError');
+        try {
+          const parsed = JSON.parse(text) as { message?: string | string[] };
+          if (typeof parsed.message === 'string' && parsed.message.trim()) {
+            message = parsed.message;
+          } else if (Array.isArray(parsed.message) && parsed.message[0]) {
+            message = String(parsed.message[0]);
+          }
+        } catch {
+          /* keep default */
+        }
+        toast.error(message);
+        return;
+      }
+      let filename = 'not-received-beneficiaries.csv';
+      const disp = res.headers['content-disposition'] as string | undefined;
+      if (disp) {
+        const m = /filename="([^"]+)"/i.exec(disp);
+        if (m?.[1]) filename = m[1];
+      } else if (selectedCategoryName) {
+        const slug = selectedCategoryName.replace(/[^\w\u0600-\u06FF-]+/g, '-').slice(0, 40);
+        filename = `not-received-${slug}-${isoDateLocal(new Date())}.csv`;
+      }
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = filename;
+      a.click();
+      URL.revokeObjectURL(url);
+      toast.success(t('common.exportSuccess'));
+    } catch (e: unknown) {
+      const err = e as { response?: { data?: Blob | { message?: string } } };
+      const data = err.response?.data;
+      if (data instanceof Blob) {
+        try {
+          const text = await data.text();
+          const parsed = JSON.parse(text) as { message?: string };
+          if (typeof parsed.message === 'string' && parsed.message.trim()) {
+            toast.error(parsed.message);
+            return;
+          }
+        } catch {
+          /* fall through */
+        }
+      } else if (typeof data?.message === 'string' && data.message.trim()) {
+        toast.error(data.message);
+        return;
+      }
+      toast.error(t('common.exportError'));
+    } finally {
+      setExportPending(false);
+    }
+  }, [exportParams, selectedCategoryName, t]);
+
+  const exportButton = (
+    <Button
+      type="button"
+      variant="outline"
+      className="min-h-10 shrink-0 gap-2 px-4"
+      disabled={exportPending}
+      onClick={() => void exportCsv()}
+    >
+      <Download className="h-4 w-4 shrink-0" aria-hidden />
+      {exportPending ? t('notReceived.exporting') : t('notReceived.exportCsv')}
+    </Button>
+  );
+
   return (
     <div className="space-y-4">
-      <PageHeader title={t('notReceived.title')} description={t('notReceived.subtitle')} />
+      <PageHeader
+        title={t('notReceived.title')}
+        description={t('notReceived.subtitle')}
+        actions={showExport ? exportButton : undefined}
+      />
 
       <Card className="space-y-4 p-4">
         <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
@@ -245,11 +354,16 @@ export function NotReceivedPage() {
             </label>
           ) : null}
         </div>
-        {data && !showInitialSkeleton ? (
-          <p className="text-sm text-muted-foreground">
-            {t('notReceived.resultSummary', { total: data.total ?? 0 })}
-          </p>
-        ) : null}
+        <div className="flex flex-wrap items-center justify-between gap-3 border-t border-border/60 pt-4">
+          {data && !showInitialSkeleton ? (
+            <p className="text-sm text-muted-foreground">
+              {t('notReceived.resultSummary', { total: data.total ?? 0 })}
+            </p>
+          ) : (
+            <span className="text-sm text-muted-foreground" />
+          )}
+          {showExport ? exportButton : null}
+        </div>
       </Card>
 
       <DataTableShell
@@ -260,7 +374,9 @@ export function NotReceivedPage() {
             <BeneficiariesTableSkeleton rows={8} />
           </div>
         ) : rows.length === 0 ? (
-          <EmptyState title={t('notReceived.empty')} />
+          <EmptyState
+            title={aidCategoryId ? t('notReceived.emptyCategory') : t('notReceived.empty')}
+          />
         ) : (
           <>
             <div className="hidden md:block overflow-x-auto">
@@ -308,19 +424,34 @@ export function NotReceivedPage() {
                       <td className="p-3">
                         {b.neededCategories.length ? (
                           <div className="flex max-w-[12rem] flex-wrap gap-1">
-                            {b.neededCategories.slice(0, 4).map((name) => (
-                              <span
-                                key={name}
-                                className="inline-block max-w-full truncate rounded-md bg-muted px-1.5 py-0.5 text-xs"
-                                title={name}
-                              >
-                                {name}
-                              </span>
-                            ))}
+                            {b.neededCategories.slice(0, 4).map((name) => {
+                              const isSelected =
+                                Boolean(aidCategoryId) && name === selectedCategoryName;
+                              return (
+                                <span
+                                  key={name}
+                                  className={cn(
+                                    'inline-block max-w-full truncate rounded-md px-1.5 py-0.5 text-xs font-medium',
+                                    isSelected
+                                      ? 'bg-primary/15 text-primary ring-1 ring-inset ring-primary/25'
+                                      : 'bg-muted text-foreground',
+                                  )}
+                                  title={name}
+                                >
+                                  {name}
+                                </span>
+                              );
+                            })}
                             {b.neededCategories.length > 4 ? (
                               <span className="text-xs text-muted-foreground">+{b.neededCategories.length - 4}</span>
                             ) : null}
                           </div>
+                        ) : selectedCategoryName ? (
+                          <span
+                            className="inline-block rounded-md bg-primary/15 px-1.5 py-0.5 text-xs font-medium text-primary ring-1 ring-inset ring-primary/25"
+                          >
+                            {selectedCategoryName}
+                          </span>
                         ) : (
                           <span className="text-muted-foreground">{t('common.dash')}</span>
                         )}
