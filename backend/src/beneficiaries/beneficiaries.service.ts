@@ -1133,9 +1133,29 @@ export class BeneficiariesService {
     };
   }
 
-  /**
-   * Beneficiary has requested/needs the given aid category (category-level row or item-level need).
-   */
+  /** Real need = category qty≥1 or notes, or item needed with qty≥1 or notes (see getNeedsSummary). */
+  private buildBeneficiaryHasAnyRealNeedFilter(): Prisma.BeneficiaryWhereInput {
+    const realCategoryNeed: Prisma.BeneficiaryCategoryWhereInput = {
+      OR: [
+        { quantity: { gte: 1 } },
+        { AND: [{ notes: { not: null } }, { notes: { not: '' } }] },
+      ],
+    };
+    const realItemNeed: Prisma.BeneficiaryItemNeedWhereInput = {
+      needed: true,
+      OR: [
+        { quantity: { gte: 1 } },
+        { AND: [{ notes: { not: null } }, { notes: { not: '' } }] },
+      ],
+    };
+    return {
+      OR: [
+        { categories: { some: realCategoryNeed } },
+        { itemNeeds: { some: realItemNeed } },
+      ],
+    };
+  }
+
   /** Matches getNeedsSummary inclusion rules (real need, not empty placeholder rows). */
   private buildBeneficiaryNeedsAidCategoryFilter(
     categoryId: string,
@@ -1167,6 +1187,26 @@ export class BeneficiariesService {
         },
       ],
     };
+  }
+
+  private beneficiaryHasAnyRealNeed(
+    b: Parameters<BeneficiariesService['beneficiaryNeedsAidCategory']>[0],
+  ): boolean {
+    if (
+      b.categories?.some((c) => {
+        const q = c.quantity ?? 0;
+        const note = c.notes?.trim() ?? '';
+        return q >= 1 || note.length > 0;
+      })
+    ) {
+      return true;
+    }
+    return (b.itemNeeds ?? []).some((n) => {
+      if (!n.needed) return false;
+      const q = n.quantity ?? 0;
+      const note = n.notes?.trim() ?? '';
+      return q >= 1 || note.length > 0;
+    });
   }
 
   /** In-memory check after fetch (must match Prisma needs filter). */
@@ -1478,6 +1518,7 @@ export class BeneficiariesService {
           ? { in: [BeneficiaryStatus.ACTIVE, BeneficiaryStatus.INACTIVE] }
           : BeneficiaryStatus.ACTIVE,
       },
+      this.buildBeneficiaryHasAnyRealNeedFilter(),
       {
         NOT: {
           distributions: {
@@ -1868,11 +1909,13 @@ export class BeneficiariesService {
       include: this.notReceivedPrismaInclude(ctx.categoryId, mode),
     });
 
-    const rows = ctx.categoryId
-      ? fetched.filter((b) =>
-          this.beneficiaryNeedsAidCategory(b, ctx.categoryId!),
-        )
-      : fetched;
+    const rows = fetched.filter((b) => {
+      if (!this.beneficiaryHasAnyRealNeed(b)) return false;
+      if (ctx.categoryId) {
+        return this.beneficiaryNeedsAidCategory(b, ctx.categoryId);
+      }
+      return true;
+    });
 
     const capped = fetched.length >= BeneficiariesService.MAX_NOT_RECEIVED;
 
@@ -1941,8 +1984,7 @@ export class BeneficiariesService {
       includeInactive?: string;
     },
   ): Promise<{ csv: string; filename: string }> {
-    const { rows, capped, selectedCategoryName } =
-      await this.queryNotReceivedSorted(actor, query, 'export');
+    const { rows, capped } = await this.queryNotReceivedSorted(actor, query, 'export');
 
     if (capped) {
       throw new BadRequestException(
@@ -1996,8 +2038,8 @@ export class BeneficiariesService {
       r.status,
       r.cookingStove ? 'Yes' : 'No',
       r.createdAt,
-      r.allNeededCategories.join('; '),
-      r.neededCategories.join('; '),
+      (r.allNeededCategories ?? []).join('; '),
+      (r.neededCategories ?? []).join('; '),
       r.neededItems,
       r.neededQuantities,
       r.needNotes,
@@ -2006,7 +2048,7 @@ export class BeneficiariesService {
       r.selectedPeriodLabel,
       r.lastReceivedAt ?? 'Never',
       r.lastReceivedCategory ?? '',
-      r.lastReceivedItems.join('; '),
+      (r.lastReceivedItems ?? []).join('; '),
       r.notReceivedReason,
       r.totalDeliveredDistributions,
       r.lastDistributionDate,
@@ -2017,13 +2059,10 @@ export class BeneficiariesService {
     ]);
 
     const datePart = new Date().toISOString().slice(0, 10);
-    const catSlug = selectedCategoryName
-      ? selectedCategoryName
-          .replace(/[^\w\u0600-\u06FF-]+/g, '-')
-          .replace(/^-|-$/g, '')
-          .slice(0, 40)
+    const catPart = query.aidCategoryId?.trim()
+      ? query.aidCategoryId.trim().slice(-12)
       : 'all-categories';
-    const filename = `not-received-${catSlug}-${datePart}.csv`;
+    const filename = `not-received-${catPart}-${datePart}.csv`;
 
     return {
       csv: buildCsvDocument(header, csvRows),

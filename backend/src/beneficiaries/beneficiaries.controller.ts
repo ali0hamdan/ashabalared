@@ -9,9 +9,11 @@ import {
   Post,
   Query,
   Res,
+  StreamableFile,
   UseGuards,
 } from '@nestjs/common';
 import { ForceDeleteDto } from '../common/dto/force-delete.dto';
+import { contentDispositionAttachment } from '../common/csv';
 import { Response } from 'express';
 import { RoleCode } from '@prisma/client';
 import { JwtAuthGuard } from '../common/guards/jwt-auth.guard';
@@ -78,7 +80,6 @@ export class BeneficiariesController {
   @Roles(RoleCode.SUPER_ADMIN, RoleCode.ADMIN)
   async exportNotReceivedCsv(
     @CurrentUser() actor: AuthUser,
-    @Res() res: Response,
     @Query('aidCategoryId') aidCategoryId?: string,
     @Query('dateFrom') dateFrom?: string,
     @Query('dateTo') dateTo?: string,
@@ -88,7 +89,7 @@ export class BeneficiariesController {
     @Query('sortBy') sortBy?: string,
     @Query('sortDirection') sortDirection?: string,
     @Query('includeInactive') includeInactive?: string,
-  ) {
+  ): Promise<StreamableFile> {
     const { csv, filename } = await this.beneficiaries.exportNotReceivedCsv(
       actor,
       {
@@ -102,12 +103,11 @@ export class BeneficiariesController {
         includeInactive,
       },
     );
-    res.setHeader('Content-Type', 'text/csv; charset=utf-8');
-    res.setHeader(
-      'Content-Disposition',
-      `attachment; filename="${filename}"`,
-    );
-    res.send(`\uFEFF${csv}`);
+    const body = Buffer.from(`\uFEFF${csv}`, 'utf8');
+    return new StreamableFile(body, {
+      type: 'text/csv; charset=utf-8',
+      disposition: contentDispositionAttachment(filename),
+    });
   }
 
   /**

@@ -249,6 +249,7 @@
     "sortDesc": "Descending",
     "includeInactive": "Include inactive beneficiaries",
     "exportCsv": "Export CSV",
+    "filterActiveCategory": "Filtered by aid category: {{category}}",
     "resultSummary": "{{total}} matching beneficiaries",
     "empty": "All matching beneficiaries have received aid for the selected filters.",
     "emptyCategory": "No beneficiaries found for this category and selected filters.",

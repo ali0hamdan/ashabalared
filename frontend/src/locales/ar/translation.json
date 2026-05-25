@@ -249,6 +249,7 @@
     "sortDesc": "تنازلي",
     "includeInactive": "تضمين المستفيدين غير النشطين",
     "exportCsv": "تصدير CSV",
+    "filterActiveCategory": "مفلتر حسب فئة المساعدة: {{category}}",
     "resultSummary": "{{total}} مستفيد مطابق",
     "empty": "جميع المستفيدين المطابقين استلموا مساعدة وفق الفلاتر المحددة.",
     "emptyCategory": "لا يوجد مستفيدون لهذه الفئة وفق الفلاتر المحددة.",

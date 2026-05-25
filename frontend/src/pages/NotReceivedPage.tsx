@@ -129,7 +129,11 @@ export function NotReceivedPage() {
       pageSize,
     ],
     staleTime: 30_000,
-    placeholderData: (prev) => prev,
+    placeholderData: (prev, prevQuery) => {
+      const prevCategory = prevQuery?.queryKey[1];
+      if (prevCategory !== aidCategoryId) return undefined;
+      return prev;
+    },
     queryFn: async () =>
       (
         await api.get<PaginatedResponse<NotReceivedRow>>('/beneficiaries/not-received', {
@@ -356,9 +360,16 @@ export function NotReceivedPage() {
         </div>
         <div className="flex flex-wrap items-center justify-between gap-3 border-t border-border/60 pt-4">
           {data && !showInitialSkeleton ? (
-            <p className="text-sm text-muted-foreground">
-              {t('notReceived.resultSummary', { total: data.total ?? 0 })}
-            </p>
+            <div className="space-y-1">
+              <p className="text-sm text-muted-foreground">
+                {t('notReceived.resultSummary', { total: data.total ?? 0 })}
+              </p>
+              {selectedCategoryName ? (
+                <p className="text-xs text-foreground">
+                  {t('notReceived.filterActiveCategory', { category: selectedCategoryName })}
+                </p>
+              ) : null}
+            </div>
           ) : (
             <span className="text-sm text-muted-foreground" />
           )}
