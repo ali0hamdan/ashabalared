@@ -44,6 +44,13 @@ type WeeklyTrackingRow = {
 
 type DriverOption = { id: string; displayName: string; username: string };
 
+type WeeklyTrackingSortBy =
+  | 'deliveredAt'
+  | 'beneficiaryName'
+  | 'area'
+  | 'driverName'
+  | 'categoryName';
+
 function isoDateLocal(d: Date): string {
   const y = d.getFullYear();
   const m = String(d.getMonth() + 1).padStart(2, '0');
@@ -126,6 +133,8 @@ export function WeeklyTrackingPage() {
   const [dateFrom, setDateFrom] = useState(() => rangeLast7Days().from);
   const [dateTo, setDateTo] = useState(() => rangeLast7Days().to);
   const [driverId, setDriverId] = useState('');
+  const [sortBy, setSortBy] = useState<WeeklyTrackingSortBy>('deliveredAt');
+  const [sortDirection, setSortDirection] = useState<'asc' | 'desc'>('desc');
   const [page, setPage] = useState(1);
   const pageSize = 25;
 
@@ -138,7 +147,7 @@ export function WeeklyTrackingPage() {
     queueMicrotask(() => {
       setPage(1);
     });
-  }, [categoryTab, searchDebounced, statusFilter, dateFrom, dateTo, driverId]);
+  }, [categoryTab, searchDebounced, statusFilter, dateFrom, dateTo, driverId, sortBy, sortDirection]);
 
   const { data: categories } = useQuery({
     queryKey: ['aid-categories', 'weekly-tracking'],
@@ -167,6 +176,8 @@ export function WeeklyTrackingPage() {
       dateFrom,
       dateTo,
       driverId,
+      sortBy,
+      sortDirection,
       page,
       pageSize,
     ],
@@ -181,6 +192,8 @@ export function WeeklyTrackingPage() {
           dateFrom,
           dateTo,
           driverId: driverId || undefined,
+          sortBy,
+          sortDirection,
           page: String(page),
           limit: String(pageSize),
         },
@@ -290,6 +303,31 @@ export function WeeklyTrackingPage() {
               </select>
             </div>
           ) : null}
+          <div className="space-y-2">
+            <Label>{t('weeklyTracking.sortBy')}</Label>
+            <select
+              className="form-select"
+              value={sortBy}
+              onChange={(e) => setSortBy(e.target.value as WeeklyTrackingSortBy)}
+            >
+              <option value="deliveredAt">{t('weeklyTracking.sortDeliveredAt')}</option>
+              <option value="beneficiaryName">{t('weeklyTracking.sortBeneficiary')}</option>
+              <option value="area">{t('weeklyTracking.sortArea')}</option>
+              <option value="driverName">{t('weeklyTracking.sortDriver')}</option>
+              <option value="categoryName">{t('weeklyTracking.sortCategory')}</option>
+            </select>
+          </div>
+          <div className="space-y-2">
+            <Label>{t('weeklyTracking.sortDirection')}</Label>
+            <select
+              className="form-select"
+              value={sortDirection}
+              onChange={(e) => setSortDirection(e.target.value as 'asc' | 'desc')}
+            >
+              <option value="desc">{t('weeklyTracking.sortDesc')}</option>
+              <option value="asc">{t('weeklyTracking.sortAsc')}</option>
+            </select>
+          </div>
         </div>
 
         <div className="space-y-2">

@@ -24,7 +24,11 @@ import {
   AuthUser,
 } from '../common/decorators/current-user.decorator';
 
-import { DistributionService } from './distribution.service';
+import {
+  DistributionService,
+  WEEKLY_TRACKING_SORT_BY,
+  type WeeklyTrackingSortBy,
+} from './distribution.service';
 
 import { CreateDistributionDto } from './dto/create-distribution.dto';
 
@@ -75,6 +79,8 @@ export class DistributionController {
     @Query('driverId') driverId?: string,
     @Query('page') page?: string,
     @Query('limit') limit?: string,
+    @Query('sortBy') sortBy?: string,
+    @Query('sortDirection') sortDirection?: string,
   ) {
     const defaults = defaultWeeklyDateRange();
     const from = parseDayBoundary(dateFrom, false) ?? defaults.dateFrom;
@@ -82,6 +88,12 @@ export class DistributionController {
     if (from.getTime() > to.getTime()) {
       throw new BadRequestException('dateFrom must be on or before dateTo');
     }
+    const safeSortBy = WEEKLY_TRACKING_SORT_BY.includes(
+      sortBy as WeeklyTrackingSortBy,
+    )
+      ? (sortBy as WeeklyTrackingSortBy)
+      : 'deliveredAt';
+    const safeSortDir = sortDirection === 'asc' ? 'asc' : 'desc';
     return this.distribution.weeklyTracking(actor, {
       aidCategoryId,
       search: search?.trim() || q?.trim() || undefined,
@@ -91,6 +103,8 @@ export class DistributionController {
       driverId: driverId?.trim() || undefined,
       page,
       limit,
+      sortBy: safeSortBy,
+      sortDirection: safeSortDir,
     });
   }
 

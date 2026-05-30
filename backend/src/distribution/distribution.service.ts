@@ -35,6 +35,16 @@ import {
 } from '../common/pagination';
 import { isFoodRationsCategoryName } from '../beneficiaries/constants/food-rations-category';
 
+/** Whitelisted weekly-tracking sort keys (validated; never raw-passed to Prisma). */
+export const WEEKLY_TRACKING_SORT_BY = [
+  'deliveredAt',
+  'beneficiaryName',
+  'area',
+  'driverName',
+  'categoryName',
+] as const;
+export type WeeklyTrackingSortBy = (typeof WEEKLY_TRACKING_SORT_BY)[number];
+
 /** Slim payload for list/grid pages (avoids heavy stock nesting). */
 const distributionListSelect = {
   id: true,
@@ -484,6 +494,8 @@ export class DistributionService {
       driverId?: string;
       page?: string;
       limit?: string;
+      sortBy?: WeeklyTrackingSortBy;
+      sortDirection?: 'asc' | 'desc';
     },
   ): Promise<
     PaginatedResult<{
@@ -823,6 +835,49 @@ export class DistributionService {
         });
       }
     }
+
+    const sortBy: WeeklyTrackingSortBy = WEEKLY_TRACKING_SORT_BY.includes(
+      query.sortBy as WeeklyTrackingSortBy,
+    )
+      ? (query.sortBy as WeeklyTrackingSortBy)
+      : 'deliveredAt';
+    const sortDir = query.sortDirection === 'asc' ? 'asc' : 'desc';
+    const dirFactor = sortDir === 'asc' ? 1 : -1;
+
+    const collator = new Intl.Collator(['ar', 'en'], {
+      numeric: true,
+      sensitivity: 'base',
+    });
+    const compareText = (a: string, b: string) => collator.compare(a, b);
+
+    corrected.sort((a, b) => {
+      let primary = 0;
+      switch (sortBy) {
+        case 'beneficiaryName':
+          primary = compareText(a.beneficiary.fullName ?? '', b.beneficiary.fullName ?? '');
+          break;
+        case 'area':
+          primary = compareText(a.beneficiary.area ?? '', b.beneficiary.area ?? '');
+          break;
+        case 'driverName':
+          primary = compareText(
+            a.driver?.displayName?.trim() || a.driver?.username || '',
+            b.driver?.displayName?.trim() || b.driver?.username || '',
+          );
+          break;
+        case 'categoryName':
+          primary = compareText(a.aidCategory.name ?? '', b.aidCategory.name ?? '');
+          break;
+        case 'deliveredAt':
+        default:
+          primary =
+            new Date(a.activityAt).getTime() - new Date(b.activityAt).getTime();
+          break;
+      }
+      if (primary !== 0) return primary * dirFactor;
+      /** Stable tie-breaker: most recent activity first. */
+      return new Date(b.activityAt).getTime() - new Date(a.activityAt).getTime();
+    });
 
     const totalFlat = corrected.length;
     const data = corrected.slice(skip, skip + limit);
