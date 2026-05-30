@@ -213,7 +213,7 @@ export function BeneficiaryDetailPage() {
 
   const notNeededItems = useMemo(() => (data?.itemNeeds ?? []).filter((r) => r.needed === false), [data]);
 
-  /** Category-level rows only when no “needed” catalog items are shown for that category (avoid duplicate headings). */
+  /** Category-level need when no item-level needs exist for that category. */
   const categoriesWithNeededItems = useMemo(() => {
     const groups = data?.itemNeedsByCategory ?? [];
     return new Set(
@@ -221,10 +221,68 @@ export function BeneficiaryDetailPage() {
     );
   }, [data]);
 
-  const legacyCategoryRows = useMemo(() => {
+  const categoryOnlyNeeds = useMemo(() => {
     const all = data?.categories ?? [];
-    return all.filter((n) => !categoriesWithNeededItems.has(n.category?.id ?? ''));
+    return all.filter((n) => {
+      const q = typeof n.quantity === 'number' ? n.quantity : 0;
+      const note = n.notes?.trim() ?? '';
+      const hasRealNeed = q >= 1 || note.length > 0;
+      return hasRealNeed && !categoriesWithNeededItems.has(n.category?.id ?? '');
+    });
   }, [data, categoriesWithNeededItems]);
+
+  type AidNeedGroup = {
+    categoryId: string;
+    categoryName: string;
+    items: Array<{
+      id: string;
+      quantity?: number;
+      notes?: string | null;
+      aidCategoryItem?: { name?: string };
+    }>;
+    categoryOnly?: {
+      id: string;
+      quantity?: number;
+      notes?: string | null;
+    };
+    categoryNote?: string;
+  };
+
+  const aidNeedsGroups = useMemo((): AidNeedGroup[] => {
+    const map = new Map<string, AidNeedGroup>();
+    for (const g of neededByCategory) {
+      map.set(g.category.id, {
+        categoryId: g.category.id,
+        categoryName: g.category.name,
+        items: g.needs,
+      });
+    }
+    for (const n of data?.categories ?? []) {
+      const id = n.category?.id ?? '';
+      if (!id) continue;
+      const q = typeof n.quantity === 'number' ? n.quantity : 0;
+      const note = n.notes?.trim() ?? '';
+      if (q < 1 && !note.length) continue;
+      const existing = map.get(id);
+      if (existing) {
+        if (note.length) existing.categoryNote = note;
+      } else if (!categoriesWithNeededItems.has(id)) {
+        map.set(id, {
+          categoryId: id,
+          categoryName: n.category?.name ?? '',
+          items: [],
+          categoryOnly: {
+            id: n.id,
+            quantity: n.quantity,
+            notes: n.notes,
+          },
+        });
+      }
+    }
+    return [...map.values()].sort((a, b) =>
+      a.categoryName.localeCompare(b.categoryName),
+    );
+  }, [neededByCategory, data?.categories, categoriesWithNeededItems]);
 
   const dateLocale = i18n.language.startsWith('ar') ? 'ar' : 'en-US';
 
@@ -565,83 +623,115 @@ export function BeneficiaryDetailPage() {
           </Card>
 
           <Card>
-            <CardTitle>{t('beneficiaryDetail.itemNeedsTitle')}</CardTitle>
-            <CardDescription className="mt-2">{t('beneficiaryDetail.itemNeedsDesc')}</CardDescription>
+            <CardTitle>{t('beneficiaryDetail.aidNeedsTitle')}</CardTitle>
+            <CardDescription className="mt-2">{t('beneficiaryDetail.aidNeedsDesc')}</CardDescription>
 
-            {neededByCategory.length > 0 ? (
+            {aidNeedsGroups.length > 0 ? (
               <div className="mt-3 space-y-4">
-                {neededByCategory.map((g) => (
-                  <div key={g.category.id}>
-                    <div className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">{g.category.name}</div>
+                {aidNeedsGroups.map((g) => (
+                  <div key={g.categoryId}>
+                    <div className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+                      {g.categoryName}
+                    </div>
                     <ul className="mt-2 space-y-2">
-                      {g.needs.map((n: { id: string; quantity?: number; notes?: string | null; aidCategoryItem?: { name?: string } }) => (
-                        <li key={n.id} className="rounded-lg border border-border bg-muted/20 px-3 py-2 text-sm">
+                      {g.items.map((n) => (
+                        <li
+                          key={n.id}
+                          className="rounded-lg border border-border bg-muted/20 px-3 py-2 text-sm"
+                        >
                           <div>
-                            <span className="font-medium">{n.aidCategoryItem?.name ?? t('common.dash')}</span>
+                            <span className="font-medium">
+                              {n.aidCategoryItem?.name ?? t('common.dash')}
+                            </span>
                             <span className="ms-2 text-muted-foreground">
-                              {t('beneficiaryDetail.qtyTimes', { qty: typeof n.quantity === 'number' ? n.quantity : 0 })}
+                              {t('beneficiaryDetail.qtyTimes', {
+                                qty: typeof n.quantity === 'number' ? n.quantity : 0,
+                              })}
                             </span>
                           </div>
                           {n.notes?.trim() ? (
-                            <p className="mt-1 text-muted-foreground whitespace-pre-wrap">{n.notes.trim()}</p>
+                            <p className="mt-1 whitespace-pre-wrap text-muted-foreground">
+                              {n.notes.trim()}
+                            </p>
                           ) : null}
                         </li>
                       ))}
+                      {g.categoryOnly ? (
+                        <li
+                          key={g.categoryOnly.id}
+                          className="rounded-lg border border-dashed border-border bg-muted/15 px-3 py-2 text-sm"
+                        >
+                          <div>
+                            <span className="font-medium text-muted-foreground">
+                              {t('beneficiaryDetail.unspecifiedNeed')}
+                            </span>
+                            {(g.categoryOnly.quantity ?? 0) >= 1 ? (
+                              <span className="ms-2 text-muted-foreground">
+                                {t('beneficiaryDetail.qtyTimes', {
+                                  qty: g.categoryOnly.quantity ?? 0,
+                                })}
+                              </span>
+                            ) : (
+                              <span className="ms-2 text-xs text-muted-foreground">
+                                {t('beneficiaryDetail.categoryNeedNoAmount')}
+                              </span>
+                            )}
+                          </div>
+                          {g.categoryOnly.notes?.trim() ? (
+                            <p className="mt-1 whitespace-pre-wrap text-muted-foreground">
+                              {g.categoryOnly.notes.trim()}
+                            </p>
+                          ) : null}
+                        </li>
+                      ) : null}
                     </ul>
+                    {g.categoryNote ? (
+                      <p className="mt-2 text-xs text-muted-foreground">
+                        {t('beneficiaryDetail.categoryNote', { note: g.categoryNote })}
+                      </p>
+                    ) : null}
                   </div>
                 ))}
               </div>
-            ) : legacyCategoryRows.length > 0 ? (
-              <div className="mt-3">
-                <p className="mb-2 text-xs text-muted-foreground">{t('beneficiaryDetail.legacyCategoryNeeds')}</p>
-                <ul className="space-y-2 text-sm">
-                  {legacyCategoryRows.map((n: { id: string; quantity?: number; notes?: string | null; category?: { name?: string } }) => {
-                    const q = typeof n.quantity === 'number' ? n.quantity : 0;
-                    return (
-                    <li key={n.id} className="rounded-lg border border-border bg-muted/20 px-3 py-2">
-                      <div>
-                        <span className="font-medium">{n.category?.name}</span>
-                        {q >= 1 ? (
-                          <span className="ms-2 text-muted-foreground">× {q}</span>
-                        ) : n.notes?.trim() ? null : (
-                          <span className="ms-2 text-xs text-muted-foreground">{t('beneficiaryDetail.categoryNeedNoAmount')}</span>
-                        )}
+            ) : categoryOnlyNeeds.length > 0 ? (
+              <div className="mt-3 space-y-4">
+                {categoryOnlyNeeds.map((n) => {
+                  const q = typeof n.quantity === 'number' ? n.quantity : 0;
+                  return (
+                    <div key={n.id}>
+                      <div className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+                        {n.category?.name}
                       </div>
-                      {n.notes?.trim() ? <p className="mt-1 text-muted-foreground whitespace-pre-wrap">{n.notes.trim()}</p> : null}
-                    </li>
-                    );
-                  })}
-                </ul>
+                      <ul className="mt-2 space-y-2">
+                        <li className="rounded-lg border border-border bg-muted/20 px-3 py-2 text-sm">
+                          <div>
+                            <span className="font-medium text-muted-foreground">
+                              {t('beneficiaryDetail.unspecifiedNeed')}
+                            </span>
+                            {q >= 1 ? (
+                              <span className="ms-2 text-muted-foreground">
+                                {t('beneficiaryDetail.qtyTimes', { qty: q })}
+                              </span>
+                            ) : (
+                              <span className="ms-2 text-xs text-muted-foreground">
+                                {t('beneficiaryDetail.categoryNeedNoAmount')}
+                              </span>
+                            )}
+                          </div>
+                          {n.notes?.trim() ? (
+                            <p className="mt-1 whitespace-pre-wrap text-muted-foreground">
+                              {n.notes.trim()}
+                            </p>
+                          ) : null}
+                        </li>
+                      </ul>
+                    </div>
+                  );
+                })}
               </div>
             ) : (
               <p className="mt-3 text-sm text-muted-foreground">{t('common.none')}</p>
             )}
-
-            {legacyCategoryRows.length > 0 && neededByCategory.length > 0 ? (
-              <div className="mt-4 border-t border-border pt-4">
-                <div className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-                  {t('beneficiaryDetail.legacyCategoryNeeds')}
-                </div>
-                <ul className="mt-2 space-y-2 text-sm">
-                  {legacyCategoryRows.map((n: { id: string; quantity?: number; notes?: string | null; category?: { name?: string } }) => {
-                    const q = typeof n.quantity === 'number' ? n.quantity : 0;
-                    return (
-                    <li key={n.id} className="rounded-lg border border-border bg-muted/30 px-3 py-2">
-                      <div>
-                        <span className="font-medium">{n.category?.name}</span>
-                        {q >= 1 ? (
-                          <span className="ms-2 text-muted-foreground">× {q}</span>
-                        ) : n.notes?.trim() ? null : (
-                          <span className="ms-2 text-xs text-muted-foreground">{t('beneficiaryDetail.categoryNeedNoAmount')}</span>
-                        )}
-                      </div>
-                      {n.notes?.trim() ? <p className="mt-1 text-muted-foreground whitespace-pre-wrap">{n.notes.trim()}</p> : null}
-                    </li>
-                    );
-                  })}
-                </ul>
-              </div>
-            ) : null}
 
             {notNeededItems.length > 0 ? (
               <div className="mt-4 border-t border-border pt-3">

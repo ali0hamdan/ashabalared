@@ -16,8 +16,11 @@ export type PurchaseNeedsBeneficiaryRow = {
   notes: string | null;
 };
 
+export const PURCHASE_NEEDS_UNSPECIFIED_LABEL = 'Unspecified need';
+
 export type PurchaseNeedsItemRow = {
-  aidCategoryItemId: string | null;
+  type: 'ITEM';
+  aidCategoryItemId: string;
   itemName: string;
   unit: StockUnit;
   totalNeeded: number;
@@ -29,10 +32,22 @@ export type PurchaseNeedsItemRow = {
   beneficiaries: PurchaseNeedsBeneficiaryRow[];
 };
 
+export type PurchaseNeedsUnspecifiedRow = {
+  type: 'CATEGORY';
+  label: string;
+  totalNeeded: number;
+  totalNeededLabel: string;
+  hasUnspecifiedQuantity: boolean;
+  beneficiariesCount: number;
+  beneficiaries: PurchaseNeedsBeneficiaryRow[];
+  helperText: string;
+};
+
 export type PurchaseNeedsCategoryRow = {
   aidCategoryId: string;
   aidCategoryName: string;
   items: PurchaseNeedsItemRow[];
+  unspecifiedNeed: PurchaseNeedsUnspecifiedRow | null;
 };
 
 export type PurchaseNeedsResponse = {
@@ -110,7 +125,7 @@ export class PurchaseNeedsService {
     if (itemNote) {
       return {
         quantity: null,
-        label: 'Needed, no quantity specified',
+        label: 'No quantity specified',
       };
     }
     if (categoryNeed && this.isRealCategoryNeed(categoryNeed)) {
@@ -126,7 +141,7 @@ export class PurchaseNeedsService {
         };
       }
     }
-    return { quantity: null, label: 'Needed, no quantity specified' };
+    return { quantity: null, label: 'No quantity specified' };
   }
 
   private parseSort(
@@ -341,9 +356,7 @@ export class PurchaseNeedsService {
             street: b.addressLine?.trim() || null,
             quantity: catQ >= 1 ? catQ : null,
             quantityLabel:
-              catQ >= 1
-                ? String(catQ)
-                : 'Needed, no quantity specified',
+              catQ >= 1 ? String(catQ) : 'No quantity specified',
             notes: catNote || null,
           });
         }
@@ -356,14 +369,15 @@ export class PurchaseNeedsService {
 
         const needToBuy = Math.max(acc.totalNeeded - acc.currentStock, 0);
         const row: PurchaseNeedsItemRow = {
+          type: 'ITEM',
           aidCategoryItemId: acc.aidCategoryItemId,
           itemName: acc.itemName,
           unit: acc.unit,
           totalNeeded: acc.totalNeeded,
           totalNeededLabel: acc.hasUnspecified
             ? acc.totalNeeded > 0
-              ? `${acc.totalNeeded} + unspecified`
-              : 'Needed, no quantity specified'
+              ? `${acc.totalNeeded} + no qty`
+              : 'No quantity specified'
             : String(acc.totalNeeded),
           hasUnspecifiedQuantity: acc.hasUnspecified,
           currentStock: acc.currentStock,
@@ -382,44 +396,50 @@ export class PurchaseNeedsService {
         items.push(row);
       }
 
+      let unspecifiedNeed: PurchaseNeedsUnspecifiedRow | null = null;
       if (categoryOnlyBeneficiaries.length > 0) {
-        const catOnlyName = '(Category-level need)';
-        if (!search || this.matchesSearch(search, cat.name, catOnlyName)) {
-          const currentStock = 0;
-          const needToBuy = Math.max(categoryOnlyTotal - currentStock, 0);
-          items.push({
-            aidCategoryItemId: null,
-            itemName: catOnlyName,
-            unit: StockUnit.PIECE,
+        if (
+          !search ||
+          this.matchesSearch(
+            search,
+            cat.name,
+            PURCHASE_NEEDS_UNSPECIFIED_LABEL,
+          )
+        ) {
+          unspecifiedNeed = {
+            type: 'CATEGORY',
+            label: PURCHASE_NEEDS_UNSPECIFIED_LABEL,
             totalNeeded: categoryOnlyTotal,
             totalNeededLabel: categoryOnlyUnspecified
               ? categoryOnlyTotal > 0
-                ? `${categoryOnlyTotal} + unspecified`
-                : 'Needed, no quantity specified'
+                ? `${categoryOnlyTotal} + no qty`
+                : 'No quantity specified'
               : String(categoryOnlyTotal),
             hasUnspecifiedQuantity: categoryOnlyUnspecified,
-            currentStock,
-            needToBuy,
             beneficiariesCount: categoryOnlyBeneficiaries.length,
             beneficiaries: categoryOnlyBeneficiaries,
-          });
+            helperText: 'Specific item not selected',
+          };
         }
       }
 
       const filteredItems = items.filter((row) => {
-        if (!search) return row.beneficiariesCount > 0 || row.totalNeeded > 0;
+        if (!search) return row.beneficiariesCount > 0;
         return (
           this.matchesSearch(search, cat.name, row.itemName) &&
-          (row.beneficiariesCount > 0 || row.totalNeeded > 0)
+          row.beneficiariesCount > 0
         );
       });
 
-      if (filteredItems.length === 0) continue;
+      const hasUnspecified =
+        unspecifiedNeed && unspecifiedNeed.beneficiariesCount > 0;
+      if (filteredItems.length === 0 && !hasUnspecified) continue;
 
       categories.push({
         aidCategoryId: cat.id,
         aidCategoryName: cat.name,
         items: this.sortItems(filteredItems, field, asc),
+        unspecifiedNeed: hasUnspecified ? unspecifiedNeed : null,
       });
     }
 
@@ -463,48 +483,86 @@ export class PurchaseNeedsService {
       'Notes',
     ];
 
+    const pushDetailRows = (
+      catName: string,
+      itemName: string,
+      unit: string,
+      totalNeeded: number,
+      totalLabel: string,
+      stock: string,
+      buy: string,
+      count: number,
+      beneficiaries: PurchaseNeedsBeneficiaryRow[],
+    ) => {
+      if (beneficiaries.length === 0) {
+        rows.push([
+          catName,
+          itemName,
+          unit,
+          totalNeeded,
+          totalLabel,
+          stock,
+          buy,
+          count,
+          '',
+          '',
+          '',
+          '',
+          '',
+          '',
+          '',
+        ]);
+        return;
+      }
+      for (const ben of beneficiaries) {
+        rows.push([
+          catName,
+          itemName,
+          unit,
+          totalNeeded,
+          totalLabel,
+          stock,
+          buy,
+          count,
+          ben.fullName,
+          ben.phone,
+          ben.area ?? '',
+          ben.street ?? '',
+          ben.quantity ?? '',
+          ben.quantityLabel,
+          ben.notes ?? '',
+        ]);
+      }
+    };
+
     const rows: unknown[][] = [];
     for (const cat of categories) {
       for (const item of cat.items) {
-        if (item.beneficiaries.length === 0) {
-          rows.push([
-            cat.aidCategoryName,
-            item.itemName,
-            item.unit,
-            item.totalNeeded,
-            item.totalNeededLabel,
-            item.currentStock,
-            item.needToBuy,
-            item.beneficiariesCount,
-            '',
-            '',
-            '',
-            '',
-            '',
-            '',
-            '',
-          ]);
-          continue;
-        }
-        for (const ben of item.beneficiaries) {
-          rows.push([
-            cat.aidCategoryName,
-            item.itemName,
-            item.unit,
-            item.totalNeeded,
-            item.totalNeededLabel,
-            item.currentStock,
-            item.needToBuy,
-            item.beneficiariesCount,
-            ben.fullName,
-            ben.phone,
-            ben.area ?? '',
-            ben.street ?? '',
-            ben.quantity ?? '',
-            ben.quantityLabel,
-            ben.notes ?? '',
-          ]);
-        }
+        pushDetailRows(
+          cat.aidCategoryName,
+          item.itemName,
+          item.unit,
+          item.totalNeeded,
+          item.totalNeededLabel,
+          String(item.currentStock),
+          String(item.needToBuy),
+          item.beneficiariesCount,
+          item.beneficiaries,
+        );
+      }
+      if (cat.unspecifiedNeed) {
+        const u = cat.unspecifiedNeed;
+        pushDetailRows(
+          cat.aidCategoryName,
+          u.label,
+          '',
+          u.totalNeeded,
+          u.totalNeededLabel,
+          '—',
+          'Choose item',
+          u.beneficiariesCount,
+          u.beneficiaries,
+        );
       }
     }
 

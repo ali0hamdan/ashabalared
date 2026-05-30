@@ -31,7 +31,8 @@ type PurchaseNeedsBeneficiary = {
 };
 
 type PurchaseNeedsItem = {
-  aidCategoryItemId: string | null;
+  type: 'ITEM';
+  aidCategoryItemId: string;
   itemName: string;
   unit: string;
   totalNeeded: number;
@@ -43,10 +44,22 @@ type PurchaseNeedsItem = {
   beneficiaries: PurchaseNeedsBeneficiary[];
 };
 
+type PurchaseNeedsUnspecified = {
+  type: 'CATEGORY';
+  label: string;
+  totalNeeded: number;
+  totalNeededLabel: string;
+  hasUnspecifiedQuantity: boolean;
+  beneficiariesCount: number;
+  beneficiaries: PurchaseNeedsBeneficiary[];
+  helperText: string;
+};
+
 type PurchaseNeedsCategory = {
   aidCategoryId: string;
   aidCategoryName: string;
   items: PurchaseNeedsItem[];
+  unspecifiedNeed: PurchaseNeedsUnspecified | null;
 };
 
 type PurchaseNeedsResponse = {
@@ -70,7 +83,9 @@ export function PurchaseNeedsPage() {
   const [expandedCats, setExpandedCats] = useState<Record<string, boolean>>({});
   const [drillItem, setDrillItem] = useState<{
     categoryName: string;
-    item: PurchaseNeedsItem;
+    title: string;
+    beneficiaries: PurchaseNeedsBeneficiary[];
+    helperText?: string;
   } | null>(null);
   const [exportPending, setExportPending] = useState(false);
 
@@ -191,7 +206,11 @@ export function PurchaseNeedsPage() {
     </Button>
   );
 
-  const totalItems = data?.categories.reduce((n, c) => n + c.items.length, 0) ?? 0;
+  const totalItems =
+    data?.categories.reduce(
+      (n, c) => n + c.items.length + (c.unspecifiedNeed ? 1 : 0),
+      0,
+    ) ?? 0;
 
   return (
     <div className="space-y-4">
@@ -301,7 +320,10 @@ export function PurchaseNeedsPage() {
                     )}
                     <span className="font-semibold text-foreground">{cat.aidCategoryName}</span>
                     <span className="text-xs text-muted-foreground">
-                      ({cat.items.length} {t('purchaseNeeds.items')})
+                      (
+                      {cat.items.length +
+                        (cat.unspecifiedNeed ? 1 : 0)}{' '}
+                      {t('purchaseNeeds.items')})
                     </span>
                   </button>
                   {open ? (
@@ -321,14 +343,10 @@ export function PurchaseNeedsPage() {
                         <tbody>
                           {cat.items.map((item) => (
                             <tr
-                              key={item.aidCategoryItemId ?? item.itemName}
+                              key={item.aidCategoryItemId}
                               className="border-b border-border align-top hover:bg-muted/15"
                             >
-                              <td className="p-3 font-medium">
-                                {item.itemName.startsWith('(Category-level')
-                                  ? t('purchaseNeeds.categoryLevelNeed')
-                                  : item.itemName}
-                              </td>
+                              <td className="p-3 font-medium">{item.itemName}</td>
                               <td className="p-3 text-muted-foreground">{item.unit}</td>
                               <td className="p-3 tabular-nums">
                                 {item.totalNeededLabel}
@@ -352,7 +370,11 @@ export function PurchaseNeedsPage() {
                                   variant="outline"
                                   className="h-8 gap-1.5 px-2.5 text-xs"
                                   onClick={() =>
-                                    setDrillItem({ categoryName: cat.aidCategoryName, item })
+                                    setDrillItem({
+                                      categoryName: cat.aidCategoryName,
+                                      title: item.itemName,
+                                      beneficiaries: item.beneficiaries,
+                                    })
                                   }
                                 >
                                   <Users className="h-3.5 w-3.5" aria-hidden />
@@ -361,6 +383,54 @@ export function PurchaseNeedsPage() {
                               </td>
                             </tr>
                           ))}
+                          {cat.unspecifiedNeed ? (
+                            <tr
+                              key={`${cat.aidCategoryId}-unspecified`}
+                              className="border-b border-border align-top bg-muted/10 hover:bg-muted/20"
+                            >
+                              <td className="p-3">
+                                <div className="font-medium">
+                                  {t('purchaseNeeds.unspecifiedNeed')}
+                                </div>
+                                <p className="mt-1 text-xs text-muted-foreground">
+                                  {t('purchaseNeeds.specificItemNotSelected')}
+                                </p>
+                              </td>
+                              <td className="p-3 text-muted-foreground">{t('common.dash')}</td>
+                              <td className="p-3 tabular-nums">
+                                {cat.unspecifiedNeed.totalNeededLabel}
+                              </td>
+                              <td className="p-3 tabular-nums text-muted-foreground">
+                                {t('common.dash')}
+                              </td>
+                              <td className="p-3">
+                                <Badge variant="neutral">
+                                  {t('purchaseNeeds.chooseItem')}
+                                </Badge>
+                              </td>
+                              <td className="p-3 tabular-nums">
+                                {cat.unspecifiedNeed.beneficiariesCount}
+                              </td>
+                              <td className="p-3">
+                                <Button
+                                  type="button"
+                                  variant="outline"
+                                  className="h-8 gap-1.5 px-2.5 text-xs"
+                                  onClick={() =>
+                                    setDrillItem({
+                                      categoryName: cat.aidCategoryName,
+                                      title: t('purchaseNeeds.unspecifiedNeed'),
+                                      beneficiaries: cat.unspecifiedNeed!.beneficiaries,
+                                      helperText: t('purchaseNeeds.specificItemNotSelected'),
+                                    })
+                                  }
+                                >
+                                  <Users className="h-3.5 w-3.5" aria-hidden />
+                                  {t('purchaseNeeds.viewBeneficiaries')}
+                                </Button>
+                              </td>
+                            </tr>
+                          ) : null}
                         </tbody>
                       </table>
                     </div>
@@ -375,11 +445,8 @@ export function PurchaseNeedsPage() {
       <Dialog
         open={Boolean(drillItem)}
         onClose={() => setDrillItem(null)}
-        title={
-          drillItem
-            ? `${drillItem.categoryName} — ${drillItem.item.itemName.startsWith('(Category-level') ? t('purchaseNeeds.categoryLevelNeed') : drillItem.item.itemName}`
-            : ''
-        }
+        title={drillItem ? `${drillItem.categoryName} — ${drillItem.title}` : ''}
+        description={drillItem?.helperText}
       >
         {drillItem ? (
           <div className="max-h-[min(60vh,28rem)] overflow-auto">
@@ -395,7 +462,7 @@ export function PurchaseNeedsPage() {
                 </tr>
               </thead>
               <tbody>
-                {drillItem.item.beneficiaries.map((b) => (
+                {drillItem.beneficiaries.map((b) => (
                   <tr key={b.id} className="border-b border-border/60 align-top">
                     <td className="p-2">
                       <Link
