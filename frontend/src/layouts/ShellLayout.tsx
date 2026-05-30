@@ -17,6 +17,7 @@ import {
   History,
   CalendarDays,
   UserRoundX,
+  ShoppingCart,
 } from 'lucide-react';
 import { NavLink, Outlet, useLocation, useNavigate } from 'react-router-dom';
 import { toast } from 'sonner';
@@ -49,6 +50,12 @@ function getNavItems(): NavItem[] {
     },
     { to: '/app/categories', labelKey: 'nav.categories', icon: Package, roles: ['SUPER_ADMIN', 'ADMIN'] },
     { to: '/app/stock', labelKey: 'nav.stock', icon: Warehouse, roles: ['SUPER_ADMIN', 'ADMIN'] },
+    {
+      to: '/app/purchase-needs',
+      labelKey: 'nav.purchaseNeeds',
+      icon: ShoppingCart,
+      roles: ['SUPER_ADMIN', 'ADMIN'],
+    },
     { to: '/app/distributions', labelKey: 'nav.distributions', icon: ClipboardList, roles: ['SUPER_ADMIN', 'ADMIN', 'DELIVERY'] },
     {
       to: '/app/delivery-by-area',

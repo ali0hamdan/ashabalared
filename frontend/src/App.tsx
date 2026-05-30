@@ -6,6 +6,7 @@ import { BeneficiaryDetailPage } from '@/pages/BeneficiaryDetailPage';
 import { BeneficiaryNewPage } from '@/pages/BeneficiaryNewPage';
 import { BeneficiariesHistoryPage } from '@/pages/BeneficiariesHistoryPage';
 import { NotReceivedPage } from '@/pages/NotReceivedPage';
+import { PurchaseNeedsPage } from '@/pages/PurchaseNeedsPage';
 import { CategoriesPage } from '@/pages/CategoriesPage';
 import { StockPage } from '@/pages/StockPage';
 import { DistributionsPage } from '@/pages/DistributionsPage';
@@ -78,6 +79,14 @@ export default function App() {
               element={
                 <RequireRole allow={['SUPER_ADMIN', 'ADMIN']}>
                   <StockPage />
+                </RequireRole>
+              }
+            />
+            <Route
+              path="/app/purchase-needs"
+              element={
+                <RequireRole allow={['SUPER_ADMIN', 'ADMIN']}>
+                  <PurchaseNeedsPage />
                 </RequireRole>
               }
             />

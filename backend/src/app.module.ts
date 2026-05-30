@@ -10,6 +10,7 @@ import { CategoriesModule } from './categories/categories.module';
 import { StockModule } from './stock/stock.module';
 import { DistributionModule } from './distribution/distribution.module';
 import { DashboardModule } from './dashboard/dashboard.module';
+import { ReportsModule } from './reports/reports.module';
 import { AppController } from './app.controller';
 
 @Module({
@@ -28,6 +29,7 @@ import { AppController } from './app.controller';
     StockModule,
     DistributionModule,
     DashboardModule,
+    ReportsModule,
   ],
   controllers: [AppController],
   providers: [],
