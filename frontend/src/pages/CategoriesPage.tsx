@@ -1,3 +1,4 @@
+import { BackButton } from '@/components/BackButton';
 import { Button } from '@/components/ui/button';
 import { Card, CardDescription, CardTitle } from '@/components/ui/card';
 import { Dialog } from '@/components/ui/dialog';
@@ -296,9 +297,12 @@ export function CategoriesPage() {
   return (
     <div className="space-y-4">
       <div className="flex flex-col gap-2 md:flex-row md:items-end md:justify-between">
-        <div>
-          <h1 className="text-2xl font-bold">{t('categories.title')}</h1>
-          <p className="text-sm text-muted-foreground">{t('categories.subtitle')}</p>
+        <div className="flex min-w-0 flex-1 gap-3">
+          <BackButton className="mt-0.5 shrink-0 self-start" />
+          <div>
+            <h1 className="text-2xl font-bold">{t('categories.title')}</h1>
+            <p className="text-sm text-muted-foreground">{t('categories.subtitle')}</p>
+          </div>
         </div>
         {canEdit ? (
           <Button type="button" onClick={openAddCategory}>

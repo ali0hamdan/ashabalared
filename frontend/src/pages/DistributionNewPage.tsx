@@ -1,4 +1,5 @@
 import { Badge } from '@/components/ui/badge';
+import { BackButton } from '@/components/BackButton';
 import { Button } from '@/components/ui/button';
 import { Card, CardDescription, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
@@ -317,9 +318,12 @@ export function DistributionNewPage() {
 
   return (
     <div className="space-y-4">
-      <div>
-        <h1 className="text-2xl font-bold">{t('distributionNew.title')}</h1>
-        <p className="text-sm text-muted-foreground">{t('distributionNew.subtitle')}</p>
+      <div className="flex gap-3">
+        <BackButton fallbackPath="/app/distributions" className="mt-0.5 shrink-0 self-start" />
+        <div>
+          <h1 className="text-2xl font-bold">{t('distributionNew.title')}</h1>
+          <p className="text-sm text-muted-foreground">{t('distributionNew.subtitle')}</p>
+        </div>
       </div>
 
       <div className="flex flex-wrap items-center gap-x-2 gap-y-1 text-sm">

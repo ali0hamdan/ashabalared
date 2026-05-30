@@ -214,7 +214,11 @@ export function BeneficiaryNewPage() {
 
   return (
     <div className="space-y-8">
-      <PageHeader title={t('beneficiaryNew.title')} description={t('beneficiaryNew.subtitle')} />
+      <PageHeader
+        backFallbackPath="/app/beneficiaries"
+        title={t('beneficiaryNew.title')}
+        description={t('beneficiaryNew.subtitle')}
+      />
 
       <Card className="space-y-5 p-5 sm:p-7">
         <CardTitle>{t('beneficiaryNew.sectionData')}</CardTitle>

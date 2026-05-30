@@ -1,3 +1,4 @@
+import { BackButton } from '@/components/BackButton';
 import { Card, CardDescription, CardTitle } from '@/components/ui/card';
 import { DistributionStatusBadge } from '@/components/StatusBadge';
 import { Input } from '@/components/ui/input';
@@ -136,9 +137,12 @@ export function BeneficiariesHistoryPage() {
 
   return (
     <div className="space-y-4">
-      <div>
-        <h1 className="text-2xl font-bold">{t('beneficiariesHistory.title')}</h1>
-        <p className="text-sm text-muted-foreground">{t('beneficiariesHistory.subtitle')}</p>
+      <div className="flex gap-3 border-b border-border/60 pb-6">
+        <BackButton className="mt-0.5 shrink-0 self-start" />
+        <div>
+          <h1 className="text-2xl font-bold">{t('beneficiariesHistory.title')}</h1>
+          <p className="text-sm text-muted-foreground">{t('beneficiariesHistory.subtitle')}</p>
+        </div>
       </div>
 
       <Card className="space-y-4 p-4">

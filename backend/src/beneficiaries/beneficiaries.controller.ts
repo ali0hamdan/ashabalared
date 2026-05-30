@@ -3,7 +3,6 @@ import {
   Controller,
   Delete,
   Get,
-  Header,
   Param,
   Patch,
   Post,
@@ -38,6 +37,7 @@ export class BeneficiariesController {
     @Query('q') q?: string,
     /** Same as `q` (either may be used). */
     @Query('search') search?: string,
+    @Query('area') area?: string,
     /** Raw query string — validated in BeneficiariesService (invalid values → 400, not 500). */
     @Query('status') status?: string,
     @Query('regionId') regionId?: string,
@@ -53,6 +53,7 @@ export class BeneficiariesController {
       | undefined;
     return this.beneficiaries.list({
       q: qCombined,
+      area: area?.trim() || undefined,
       status,
       regionId,
       forSelection,
@@ -65,10 +66,31 @@ export class BeneficiariesController {
 
   @Get('export/csv')
   @Roles(RoleCode.SUPER_ADMIN, RoleCode.ADMIN)
-  @Header('Content-Disposition', 'attachment; filename="beneficiaries.csv"')
-  async exportCsv(@Res() res: Response) {
-    const csv = await this.beneficiaries.exportCsv();
+  async exportCsv(
+    @Res() res: Response,
+    @Query('q') q?: string,
+    @Query('search') search?: string,
+    @Query('area') area?: string,
+  ) {
+    const qCombined = q?.trim() || search?.trim() || undefined;
+    const csv = await this.beneficiaries.exportCsv({
+      q: qCombined,
+      area: area?.trim() || undefined,
+    });
+    const datePart = new Date().toISOString().slice(0, 10);
+    const areaPart = area?.trim()
+      ? area
+          .trim()
+          .replace(/[^\w\u0600-\u06FF-]+/g, '-')
+          .replace(/^-|-$/g, '')
+          .slice(0, 40)
+      : 'all';
+    const filename = `beneficiaries-${areaPart}-${datePart}.csv`;
     res.setHeader('Content-Type', 'text/csv; charset=utf-8');
+    res.setHeader(
+      'Content-Disposition',
+      `attachment; filename="${filename}"`,
+    );
     res.send(`\uFEFF${csv}`);
   }
 

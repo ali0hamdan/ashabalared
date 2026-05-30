@@ -1,3 +1,4 @@
+import { BackButton } from '@/components/BackButton';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
 import { Dialog } from '@/components/ui/dialog';
@@ -306,7 +307,9 @@ export function DistributionsPage() {
   return (
     <div className="space-y-4">
       <div className="flex flex-col gap-2 md:flex-row md:items-end md:justify-between">
-        <div>
+        <div className="flex min-w-0 flex-1 gap-3">
+          <BackButton className="mt-0.5 shrink-0 self-start" />
+          <div className="min-w-0 flex-1">
           <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
             <h1 className="text-2xl font-bold">{t('distributions.title')}</h1>
             <Link
@@ -317,6 +320,7 @@ export function DistributionsPage() {
             </Link>
           </div>
           <p className="text-sm text-muted-foreground">{t('distributions.subtitle')}</p>
+          </div>
         </div>
         <div className="flex w-full min-w-0 flex-wrap items-stretch gap-2 md:ms-auto md:w-auto md:max-w-full md:justify-end">
           {isAdmin && (

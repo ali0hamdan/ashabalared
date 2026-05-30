@@ -1,3 +1,4 @@
+import { BackButton } from '@/components/BackButton';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
@@ -211,11 +212,12 @@ export function WeeklyTrackingPage() {
 
   return (
     <div className="space-y-8">
-      <div className="flex flex-wrap items-start gap-4">
+      <div className="flex flex-wrap items-start gap-4 border-b border-border/60 pb-6">
+        <BackButton className="mt-1 shrink-0 self-start" />
         <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl bg-primary/[0.09] text-primary ring-1 ring-inset ring-primary/15">
           <CalendarDays className="h-6 w-6" aria-hidden />
         </div>
-        <div className="min-w-0 flex-1 space-y-1 border-b border-border/60 pb-6">
+        <div className="min-w-0 flex-1 space-y-1">
           <h1 className="text-2xl font-semibold tracking-tight">{t('weeklyTracking.title')}</h1>
           <p className="text-sm leading-relaxed text-muted-foreground">{t('weeklyTracking.subtitle')}</p>
         </div>

@@ -19,6 +19,9 @@ import { EmptyState } from '@/components/layout/EmptyState';
 import { PageHeader } from '@/components/layout/PageHeader';
 import { PaginationControls } from '@/components/pagination-controls';
 import { BeneficiariesTableSkeleton } from '@/components/table-skeletons';
+import { Label } from '@/components/ui/label';
+import { BENEFICIARY_AREA_VALUES } from '@/lib/beneficiaryAreas';
+import { RotateCcw } from 'lucide-react';
 
 /** Labels for table chips: catalog items (needed) first, else legacy category names. */
 type BeneficiaryNeedChipSource = {
@@ -61,8 +64,11 @@ export function BeneficiariesPage() {
   const qc = useQueryClient();
   const [searchInput, setSearchInput] = useState('');
   const [searchDebounced, setSearchDebounced] = useState('');
+  const [areaFilter, setAreaFilter] = useState('');
   const [page, setPage] = useState(1);
   const pageSize = 25;
+
+  const hasActiveFilters = Boolean(searchInput.trim() || areaFilter);
 
   useEffect(() => {
     const tmr = window.setTimeout(() => setSearchDebounced(searchInput.trim()), 400);
@@ -70,8 +76,15 @@ export function BeneficiariesPage() {
   }, [searchInput]);
 
   useEffect(() => {
+    queueMicrotask(() => setPage(1));
+  }, [searchDebounced, areaFilter]);
+
+  function resetFilters() {
+    setSearchInput('');
+    setSearchDebounced('');
+    setAreaFilter('');
     setPage(1);
-  }, [searchDebounced]);
+  }
 
   const [delRow, setDelRow] = useState<{ id: string; fullName: string } | null>(null);
   const [archivePending, setArchivePending] = useState(false);
@@ -80,19 +93,27 @@ export function BeneficiariesPage() {
   const [forceBenReason, setForceBenReason] = useState('');
   const [forceBenPending, setForceBenPending] = useState(false);
 
-  const { data, isPending, isFetching, isPlaceholderData, refetch } = useQuery({
-    queryKey: ['beneficiaries', searchDebounced, page, pageSize],
+  const { data, isPending, isFetching, isPlaceholderData } = useQuery({
+    queryKey: ['beneficiaries', searchDebounced, areaFilter, page, pageSize],
     queryFn: async () =>
       (
         await api.get<PaginatedResponse<BeneficiaryListRow>>('/beneficiaries', {
           params: {
             search: searchDebounced || undefined,
+            area: areaFilter || undefined,
             page,
             limit: pageSize,
           },
         })
       ).data,
-    placeholderData: (prev) => prev,
+    placeholderData: (prev, prevQuery) => {
+      const prevSearch = prevQuery?.queryKey[1];
+      const prevArea = prevQuery?.queryKey[2];
+      if (prevSearch !== searchDebounced || prevArea !== areaFilter) {
+        return undefined;
+      }
+      return prev;
+    },
   });
 
   /** First paint with no cached or placeholder rows — show skeleton, not empty state */
@@ -157,11 +178,23 @@ export function BeneficiariesPage() {
 
   async function exportCsv() {
     try {
-      const res = await api.get('/beneficiaries/export/csv', { responseType: 'blob' });
+      const res = await api.get('/beneficiaries/export/csv', {
+        params: {
+          search: searchDebounced || undefined,
+          area: areaFilter || undefined,
+        },
+        responseType: 'blob',
+      });
+      let filename = 'beneficiaries.csv';
+      const disp = res.headers['content-disposition'] as string | undefined;
+      if (disp) {
+        const m = /filename="([^"]+)"/i.exec(disp);
+        if (m?.[1]) filename = m[1];
+      }
       const url = URL.createObjectURL(res.data);
       const a = document.createElement('a');
       a.href = url;
-      a.download = 'beneficiaries.csv';
+      a.download = filename;
       a.click();
       URL.revokeObjectURL(url);
       toast.success(t('common.exportSuccess'));
@@ -193,17 +226,47 @@ export function BeneficiariesPage() {
       />
 
       <Card className="p-4 sm:p-5">
-        <div className="flex flex-col gap-3 sm:flex-row sm:items-stretch">
-          <Input
-            className="w-full flex-1"
-            placeholder={t('beneficiaries.searchPlaceholder')}
-            value={searchInput}
-            onChange={(e) => setSearchInput(e.target.value)}
-          />
-          <Button type="button" variant="outline" className="min-h-11 shrink-0 sm:min-w-[7.5rem]" onClick={() => void refetch()}>
-            {t('common.apply')}
+        <div className="flex flex-col gap-3 lg:flex-row lg:flex-wrap lg:items-end">
+          <div className="min-w-0 flex-1 space-y-1.5">
+            <Label className="text-xs">{t('beneficiaries.searchLabel')}</Label>
+            <Input
+              className="h-10 w-full"
+              placeholder={t('beneficiaries.searchPlaceholder')}
+              value={searchInput}
+              onChange={(e) => setSearchInput(e.target.value)}
+            />
+          </div>
+          <div className="w-full space-y-1.5 sm:w-56">
+            <Label className="text-xs">{t('beneficiaries.filterArea')}</Label>
+            <select
+              className="form-select h-10 w-full"
+              value={areaFilter}
+              onChange={(e) => setAreaFilter(e.target.value)}
+            >
+              <option value="">{t('beneficiaries.allAreas')}</option>
+              {BENEFICIARY_AREA_VALUES.map((area) => (
+                <option key={area} value={area}>
+                  {area}
+                </option>
+              ))}
+            </select>
+          </div>
+          <Button
+            type="button"
+            variant="outline"
+            className="h-10 shrink-0 gap-2 px-4"
+            disabled={!hasActiveFilters}
+            onClick={resetFilters}
+          >
+            <RotateCcw className="h-4 w-4 shrink-0" aria-hidden />
+            {t('beneficiaries.resetFilters')}
           </Button>
         </div>
+        {hasActiveFilters && data && !showInitialSkeleton ? (
+          <p className="mt-3 border-t border-border/60 pt-3 text-sm text-muted-foreground">
+            {t('beneficiaries.filterSummary', { total: data.total ?? 0 })}
+          </p>
+        ) : null}
       </Card>
 
       <DataTableShell

@@ -1,3 +1,4 @@
+import { BackButton } from '@/components/BackButton';
 import { AdminForceDeletePanel } from '@/components/AdminForceDeletePanel';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
@@ -335,7 +336,9 @@ export function DeliveryByAreaPage() {
   return (
     <div className="space-y-4">
       <div className="flex flex-col gap-2 md:flex-row md:items-end md:justify-between">
-        <div>
+        <div className="flex min-w-0 flex-1 gap-3">
+          <BackButton className="mt-0.5 shrink-0 self-start" />
+          <div className="min-w-0 flex-1">
           <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
             <h1 className="text-2xl font-bold">{t('deliveryByArea.title')}</h1>
             <Link to="/app/distributions" className="text-sm font-medium text-primary hover:underline">
@@ -343,6 +346,7 @@ export function DeliveryByAreaPage() {
             </Link>
           </div>
           <p className="text-sm text-muted-foreground">{t('deliveryByArea.subtitle')}</p>
+          </div>
         </div>
       </div>
 

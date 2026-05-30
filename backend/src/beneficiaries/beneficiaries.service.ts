@@ -361,18 +361,16 @@ export class BeneficiariesService {
     });
   }
 
-  async list(query: {
+  /** Shared filters for paginated list and CSV export. */
+  private buildBeneficiaryListWhere(query: {
     q?: string;
+    area?: string;
     status?: BeneficiaryStatus | string;
     regionId?: string;
     forSelection?: string;
     includeInactive?: string;
     activeOnly?: string;
-    page?: string;
-    limit?: string;
-  }): Promise<
-    PaginatedResult<Record<string, unknown> & { street: string | null }>
-  > {
+  }): Prisma.BeneficiaryWhereInput {
     const where: Prisma.BeneficiaryWhereInput = { deletedAt: null };
     const activeOnly = parseBoolQuery(query.activeOnly);
 
@@ -400,26 +398,58 @@ export class BeneficiariesService {
 
     const regionId = query.regionId?.trim() || undefined;
     if (regionId) where.regionId = regionId;
+
+    const areaTrim = query.area?.trim();
+    if (areaTrim) {
+      if (!isAllowedBeneficiaryArea(areaTrim)) {
+        throw new BadRequestException(`Invalid area: ${areaTrim}`);
+      }
+      where.area = { equals: areaTrim, mode: 'insensitive' };
+    }
+
     const q = query.q?.trim();
     if (q) {
-      where.OR = [
-        { fullName: { contains: q, mode: 'insensitive' } },
-        { phone: { contains: q, mode: 'insensitive' } },
-        { area: { contains: q, mode: 'insensitive' } },
-        { district: { contains: q, mode: 'insensitive' } },
-        { addressLine: { contains: q, mode: 'insensitive' } },
+      where.AND = [
+        ...(Array.isArray(where.AND) ? where.AND : where.AND ? [where.AND] : []),
         {
-          region: {
-            is: {
-              OR: [
-                { nameAr: { contains: q, mode: 'insensitive' } },
-                { nameEn: { contains: q, mode: 'insensitive' } },
-              ],
+          OR: [
+            { fullName: { contains: q, mode: 'insensitive' } },
+            { phone: { contains: q, mode: 'insensitive' } },
+            { area: { contains: q, mode: 'insensitive' } },
+            { district: { contains: q, mode: 'insensitive' } },
+            { addressLine: { contains: q, mode: 'insensitive' } },
+            {
+              region: {
+                is: {
+                  OR: [
+                    { nameAr: { contains: q, mode: 'insensitive' } },
+                    { nameEn: { contains: q, mode: 'insensitive' } },
+                  ],
+                },
+              },
             },
-          },
+          ],
         },
       ];
     }
+
+    return where;
+  }
+
+  async list(query: {
+    q?: string;
+    area?: string;
+    status?: BeneficiaryStatus | string;
+    regionId?: string;
+    forSelection?: string;
+    includeInactive?: string;
+    activeOnly?: string;
+    page?: string;
+    limit?: string;
+  }): Promise<
+    PaginatedResult<Record<string, unknown> & { street: string | null }>
+  > {
+    const where = this.buildBeneficiaryListWhere(query);
 
     const { page, limit, skip } = parsePaginationQuery({
       page: query.page,
@@ -2445,11 +2475,11 @@ export class BeneficiariesService {
     return { matches: sorted, hasExactPhoneDuplicate };
   }
 
-  async exportCsv() {
+  async exportCsv(query?: { q?: string; area?: string }) {
+    const where = this.buildBeneficiaryListWhere(query ?? {});
     const rows = await this.prisma.beneficiary.findMany({
-      where: { deletedAt: null },
+      where,
       include: { region: true },
-      orderBy: { updatedAt: 'desc' },
     });
     const sorted = this.sortBeneficiaryRowsForList(rows);
     const header = [

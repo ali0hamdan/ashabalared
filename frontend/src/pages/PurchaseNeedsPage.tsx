@@ -68,6 +68,136 @@ type PurchaseNeedsResponse = {
 
 type SortByKey = 'shortage' | 'totalNeeded' | 'categoryName' | 'itemName';
 
+/** Fixed column widths — shared across every category table so columns stay aligned. */
+const PURCHASE_NEEDS_TABLE_CLASS = 'w-full min-w-[56rem] table-fixed text-sm';
+
+function PurchaseNeedsCategoryTable({
+  cat,
+  onViewBeneficiaries,
+}: {
+  cat: PurchaseNeedsCategory;
+  onViewBeneficiaries: (payload: {
+    categoryName: string;
+    title: string;
+    beneficiaries: PurchaseNeedsBeneficiary[];
+    helperText?: string;
+  }) => void;
+}) {
+  const { t } = useTranslation();
+
+  return (
+    <table className={PURCHASE_NEEDS_TABLE_CLASS}>
+      <colgroup>
+        <col className="w-[32%]" />
+        <col className="w-[8%]" />
+        <col className="w-[12%]" />
+        <col className="w-[12%]" />
+        <col className="w-[14%]" />
+        <col className="w-[10%]" />
+        <col className="w-[12%]" />
+      </colgroup>
+      <thead className="data-table-head">
+        <tr>
+          <th className="data-table-th text-start">{t('purchaseNeeds.colItem')}</th>
+          <th className="data-table-th text-center">{t('purchaseNeeds.colUnit')}</th>
+          <th className="data-table-th text-end">{t('purchaseNeeds.colNeeded')}</th>
+          <th className="data-table-th text-end">{t('purchaseNeeds.colStock')}</th>
+          <th className="data-table-th text-center">{t('purchaseNeeds.colBuy')}</th>
+          <th className="data-table-th text-end">{t('purchaseNeeds.colBeneficiaries')}</th>
+          <th className="data-table-th text-end">{t('purchaseNeeds.colActions')}</th>
+        </tr>
+      </thead>
+      <tbody>
+        {cat.items.map((item) => (
+          <tr key={item.aidCategoryItemId} className="data-table-row">
+            <td className="data-table-td text-start font-medium">{item.itemName}</td>
+            <td className="data-table-td text-center text-muted-foreground">{item.unit}</td>
+            <td className="data-table-td text-end tabular-nums">{item.totalNeededLabel}</td>
+            <td className="data-table-td text-end tabular-nums">{item.currentStock}</td>
+            <td className="data-table-td text-center">
+              <div className="flex justify-center">
+                {item.needToBuy > 0 ? (
+                  <Badge variant="warning">
+                    {t('purchaseNeeds.buyBadge', { count: item.needToBuy })}
+                  </Badge>
+                ) : (
+                  <Badge variant="success">{t('purchaseNeeds.enoughStock')}</Badge>
+                )}
+              </div>
+            </td>
+            <td className="data-table-td text-end tabular-nums">{item.beneficiariesCount}</td>
+            <td className="data-table-td text-end">
+              <Button
+                type="button"
+                variant="outline"
+                className="h-8 gap-1.5 px-2.5 text-xs"
+                onClick={() =>
+                  onViewBeneficiaries({
+                    categoryName: cat.aidCategoryName,
+                    title: item.itemName,
+                    beneficiaries: item.beneficiaries,
+                  })
+                }
+              >
+                <Users className="h-3.5 w-3.5 shrink-0" aria-hidden />
+                {t('purchaseNeeds.viewBeneficiaries')}
+              </Button>
+            </td>
+          </tr>
+        ))}
+        {cat.unspecifiedNeed ? (
+          <tr
+            key={`${cat.aidCategoryId}-unspecified`}
+            className="data-table-row border-s-2 border-s-muted-foreground/25 bg-muted/15"
+          >
+            <td className="data-table-td text-start">
+              <div className="font-medium text-muted-foreground">
+                {t('purchaseNeeds.unspecifiedNeed')}
+              </div>
+              <p className="mt-1 text-xs text-muted-foreground/90">
+                {t('purchaseNeeds.specificItemNotSelected')}
+              </p>
+            </td>
+            <td className="data-table-td text-center text-muted-foreground">{t('common.dash')}</td>
+            <td className="data-table-td text-end tabular-nums">
+              {cat.unspecifiedNeed.totalNeededLabel}
+            </td>
+            <td className="data-table-td text-end tabular-nums text-muted-foreground">
+              {t('common.dash')}
+            </td>
+            <td className="data-table-td text-center">
+              <div className="flex justify-center">
+                <Badge variant="neutral">{t('purchaseNeeds.chooseItem')}</Badge>
+              </div>
+            </td>
+            <td className="data-table-td text-end tabular-nums">
+              {cat.unspecifiedNeed.beneficiariesCount}
+            </td>
+            <td className="data-table-td text-end">
+              <Button
+                type="button"
+                variant="outline"
+                className="h-8 gap-1.5 px-2.5 text-xs"
+                onClick={() =>
+                  onViewBeneficiaries({
+                    categoryName: cat.aidCategoryName,
+                    title: t('purchaseNeeds.unspecifiedNeed'),
+                    beneficiaries: cat.unspecifiedNeed!.beneficiaries,
+                    helperText: t('purchaseNeeds.specificItemNotSelected'),
+                  })
+                }
+              >
+                <Users className="h-3.5 w-3.5 shrink-0" aria-hidden />
+                {t('purchaseNeeds.viewBeneficiaries')}
+              </Button>
+            </td>
+          </tr>
+        ) : null}
+      </tbody>
+    </table>
+  );
+}
+
 export function PurchaseNeedsPage() {
   const { t } = useTranslation();
   const role = useAuthStore((s) => s.user?.roleCode);
@@ -292,155 +422,64 @@ export function PurchaseNeedsPage() {
         ) : null}
       </Card>
 
-      <DataTableShell className={cn(isFetching && !isPending && 'opacity-[0.92] transition-opacity')}>
-        {isPending ? (
-          <p className="p-8 text-center text-sm text-muted-foreground">{t('common.loading')}</p>
-        ) : !data?.categories.length ? (
+      {isPending ? (
+        <DataTableShell>
+          <p className="p-10 text-center text-sm text-muted-foreground">{t('common.loading')}</p>
+        </DataTableShell>
+      ) : !data?.categories.length ? (
+        <DataTableShell>
           <EmptyState title={t('purchaseNeeds.empty')} />
-        ) : (
-          <div className="divide-y divide-border">
-            {data.categories.map((cat) => {
-              const open = expandedCats[cat.aidCategoryId] !== false;
-              return (
-                <div key={cat.aidCategoryId}>
-                  <button
-                    type="button"
-                    className="flex w-full items-center gap-2 bg-muted/30 px-4 py-3 text-start hover:bg-muted/50"
-                    onClick={() =>
-                      setExpandedCats((prev) => ({
-                        ...prev,
-                        [cat.aidCategoryId]: !open,
-                      }))
-                    }
-                  >
-                    {open ? (
-                      <ChevronDown className="h-4 w-4 shrink-0" aria-hidden />
-                    ) : (
-                      <ChevronRight className="h-4 w-4 shrink-0" aria-hidden />
-                    )}
-                    <span className="font-semibold text-foreground">{cat.aidCategoryName}</span>
-                    <span className="text-xs text-muted-foreground">
-                      (
-                      {cat.items.length +
-                        (cat.unspecifiedNeed ? 1 : 0)}{' '}
-                      {t('purchaseNeeds.items')})
-                    </span>
-                  </button>
+        </DataTableShell>
+      ) : (
+        <div
+          className={cn(
+            'space-y-6',
+            isFetching && !isPending && 'opacity-[0.92] transition-opacity',
+          )}
+        >
+          {data.categories.map((cat) => {
+            const open = expandedCats[cat.aidCategoryId] !== false;
+            const itemCount = cat.items.length + (cat.unspecifiedNeed ? 1 : 0);
+            return (
+              <Card
+                key={cat.aidCategoryId}
+                className="overflow-hidden border-border/70 p-0 shadow-card dark:shadow-none"
+              >
+                <button
+                  type="button"
+                  className="flex w-full items-center gap-2.5 bg-muted/40 px-5 py-4 text-start transition-colors hover:bg-muted/55"
+                  onClick={() =>
+                    setExpandedCats((prev) => ({
+                      ...prev,
+                      [cat.aidCategoryId]: !open,
+                    }))
+                  }
+                >
                   {open ? (
-                    <div className="overflow-x-auto">
-                      <table className="w-full min-w-[900px] text-sm">
-                        <thead className="bg-muted/20 text-start">
-                          <tr className="border-b border-border">
-                            <th className="p-3">{t('purchaseNeeds.colItem')}</th>
-                            <th className="p-3">{t('purchaseNeeds.colUnit')}</th>
-                            <th className="p-3">{t('purchaseNeeds.colNeeded')}</th>
-                            <th className="p-3">{t('purchaseNeeds.colStock')}</th>
-                            <th className="p-3">{t('purchaseNeeds.colBuy')}</th>
-                            <th className="p-3">{t('purchaseNeeds.colBeneficiaries')}</th>
-                            <th className="p-3">{t('purchaseNeeds.colActions')}</th>
-                          </tr>
-                        </thead>
-                        <tbody>
-                          {cat.items.map((item) => (
-                            <tr
-                              key={item.aidCategoryItemId}
-                              className="border-b border-border align-top hover:bg-muted/15"
-                            >
-                              <td className="p-3 font-medium">{item.itemName}</td>
-                              <td className="p-3 text-muted-foreground">{item.unit}</td>
-                              <td className="p-3 tabular-nums">
-                                {item.totalNeededLabel}
-                              </td>
-                              <td className="p-3 tabular-nums">{item.currentStock}</td>
-                              <td className="p-3">
-                                {item.needToBuy > 0 ? (
-                                  <Badge variant="warning">
-                                    {t('purchaseNeeds.buyBadge', { count: item.needToBuy })}
-                                  </Badge>
-                                ) : (
-                                  <Badge variant="success">
-                                    {t('purchaseNeeds.enoughStock')}
-                                  </Badge>
-                                )}
-                              </td>
-                              <td className="p-3 tabular-nums">{item.beneficiariesCount}</td>
-                              <td className="p-3">
-                                <Button
-                                  type="button"
-                                  variant="outline"
-                                  className="h-8 gap-1.5 px-2.5 text-xs"
-                                  onClick={() =>
-                                    setDrillItem({
-                                      categoryName: cat.aidCategoryName,
-                                      title: item.itemName,
-                                      beneficiaries: item.beneficiaries,
-                                    })
-                                  }
-                                >
-                                  <Users className="h-3.5 w-3.5" aria-hidden />
-                                  {t('purchaseNeeds.viewBeneficiaries')}
-                                </Button>
-                              </td>
-                            </tr>
-                          ))}
-                          {cat.unspecifiedNeed ? (
-                            <tr
-                              key={`${cat.aidCategoryId}-unspecified`}
-                              className="border-b border-border align-top bg-muted/10 hover:bg-muted/20"
-                            >
-                              <td className="p-3">
-                                <div className="font-medium">
-                                  {t('purchaseNeeds.unspecifiedNeed')}
-                                </div>
-                                <p className="mt-1 text-xs text-muted-foreground">
-                                  {t('purchaseNeeds.specificItemNotSelected')}
-                                </p>
-                              </td>
-                              <td className="p-3 text-muted-foreground">{t('common.dash')}</td>
-                              <td className="p-3 tabular-nums">
-                                {cat.unspecifiedNeed.totalNeededLabel}
-                              </td>
-                              <td className="p-3 tabular-nums text-muted-foreground">
-                                {t('common.dash')}
-                              </td>
-                              <td className="p-3">
-                                <Badge variant="neutral">
-                                  {t('purchaseNeeds.chooseItem')}
-                                </Badge>
-                              </td>
-                              <td className="p-3 tabular-nums">
-                                {cat.unspecifiedNeed.beneficiariesCount}
-                              </td>
-                              <td className="p-3">
-                                <Button
-                                  type="button"
-                                  variant="outline"
-                                  className="h-8 gap-1.5 px-2.5 text-xs"
-                                  onClick={() =>
-                                    setDrillItem({
-                                      categoryName: cat.aidCategoryName,
-                                      title: t('purchaseNeeds.unspecifiedNeed'),
-                                      beneficiaries: cat.unspecifiedNeed!.beneficiaries,
-                                      helperText: t('purchaseNeeds.specificItemNotSelected'),
-                                    })
-                                  }
-                                >
-                                  <Users className="h-3.5 w-3.5" aria-hidden />
-                                  {t('purchaseNeeds.viewBeneficiaries')}
-                                </Button>
-                              </td>
-                            </tr>
-                          ) : null}
-                        </tbody>
-                      </table>
-                    </div>
-                  ) : null}
-                </div>
-              );
-            })}
-          </div>
-        )}
-      </DataTableShell>
+                    <ChevronDown className="h-4 w-4 shrink-0 text-muted-foreground" aria-hidden />
+                  ) : (
+                    <ChevronRight className="h-4 w-4 shrink-0 text-muted-foreground" aria-hidden />
+                  )}
+                  <span className="font-semibold text-foreground">{cat.aidCategoryName}</span>
+                  <span className="text-xs font-normal text-muted-foreground">
+                    ({itemCount} {t('purchaseNeeds.items')})
+                  </span>
+                </button>
+                {open ? (
+                  <DataTableShell
+                    className="rounded-none border-0 border-t border-border/70 shadow-none"
+                  >
+                    <PurchaseNeedsCategoryTable
+                      cat={cat}
+                      onViewBeneficiaries={setDrillItem}
+                    />
+                  </DataTableShell>
+                ) : null}
+              </Card>
+            );
+          })}
+        </div>
+      )}
 
       <Dialog
         open={Boolean(drillItem)}

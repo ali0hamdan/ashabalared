@@ -1,3 +1,4 @@
+import { BackButton } from '@/components/BackButton';
 import { BeneficiaryDuplicateWarnings } from '@/components/BeneficiaryDuplicateWarnings';
 import { Card, CardDescription, CardTitle } from '@/components/ui/card';
 import { BeneficiaryItemNeedsFields } from '@/components/BeneficiaryItemNeedsFields';
@@ -372,12 +373,15 @@ export function BeneficiaryDetailPage() {
   return (
     <div className="space-y-4 print:space-y-3">
       <div className="flex flex-col gap-3 print:hidden md:flex-row md:items-start md:justify-between">
-        <div>
+        <div className="flex min-w-0 flex-1 gap-3">
+          <BackButton fallbackPath="/app/beneficiaries" className="mt-0.5 self-start" />
+          <div className="min-w-0 flex-1">
           <h1 className="flex flex-wrap items-center gap-2 text-2xl font-bold">
             <span>{data.fullName}</span>
             {data.status === 'INACTIVE' ? <BeneficiaryStatusBadge status="INACTIVE" /> : null}
           </h1>
           <p className="text-sm text-muted-foreground">{t('beneficiaryDetail.subtitle')}</p>
+          </div>
         </div>
         <div className="flex flex-wrap gap-2">
           {canEdit ? (

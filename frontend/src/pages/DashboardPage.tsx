@@ -72,7 +72,7 @@ export function DashboardPage() {
   if (isError || !data) {
     return (
       <div className="space-y-8">
-        <PageHeader title={t('dashboard.overviewTitle')} description={t('dashboard.overviewSubtitle')} />
+        <PageHeader showBack={false} title={t('dashboard.overviewTitle')} description={t('dashboard.overviewSubtitle')} />
         <Card className="border-destructive/35 bg-destructive/[0.04] p-6 shadow-card dark:shadow-none">
           <CardTitle className="text-base">{t('dashboard.errorLoad')}</CardTitle>
           <CardDescription className="mt-2">{t('dashboard.retry')}</CardDescription>
@@ -87,7 +87,7 @@ export function DashboardPage() {
   if (role === 'DELIVERY') {
     return (
       <div className="space-y-8">
-        <PageHeader title={t('dashboard.deliveryWelcome')} description={t('dashboard.deliverySubtitle')} />
+        <PageHeader showBack={false} title={t('dashboard.deliveryWelcome')} description={t('dashboard.deliverySubtitle')} />
 
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
           <Stat
@@ -141,7 +141,7 @@ export function DashboardPage() {
 
   return (
     <div className="space-y-8">
-      <PageHeader title={t('dashboard.overviewTitle')} description={t('dashboard.overviewSubtitle')} />
+      <PageHeader showBack={false} title={t('dashboard.overviewTitle')} description={t('dashboard.overviewSubtitle')} />
 
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
         <Stat title={t('dashboard.benefActive')} value={data.beneficiaries.active} hint={t('dashboard.benefActiveHint')} />
