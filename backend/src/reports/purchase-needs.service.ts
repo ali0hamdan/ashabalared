@@ -545,7 +545,7 @@ export class PurchaseNeedsService {
         const u = cat.categoryNeed;
         pushDetailRows(
           cat.aidCategoryName,
-          u.label,
+          cat.aidCategoryName,
           '',
           u.totalNeeded,
           u.totalNeededLabel,

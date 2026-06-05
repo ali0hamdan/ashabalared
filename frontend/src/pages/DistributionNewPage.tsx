@@ -26,6 +26,30 @@ import { enUS } from 'date-fns/locale/en-US';
 
 type Line = { stockItemId: string; quantity: number };
 
+/** Suggested item needed but no available stock item matched. */
+type MissingSuggestion = { itemName: string; categoryName: string; quantity: number | null };
+/** Matched stock item, but available stock is below the needed quantity. */
+type InsufficientSuggestion = {
+  itemName: string;
+  categoryName: string;
+  needed: number;
+  available: number;
+  shortage: number;
+};
+/** Category-level need with no specific item chosen (cannot auto-allocate). */
+type CategoryLevelSuggestion = { categoryName: string; quantity: number | null };
+
+type SuggestionAlerts = {
+  missing: MissingSuggestion[];
+  insufficient: InsufficientSuggestion[];
+  categoryLevel: CategoryLevelSuggestion[];
+};
+
+/** Trim + lowercase for last-resort name matching when no ID relation exists. */
+function normalizeName(raw: string | null | undefined): string {
+  return (raw ?? '').trim().toLowerCase();
+}
+
 function formatBeneficiaryAddressLines(b: {
   area?: string | null;
   region?: { nameAr?: string | null; nameEn?: string | null } | null;
@@ -55,6 +79,7 @@ export function DistributionNewPage() {
   const [saving, setSaving] = useState(false);
   const [recentAidAck, setRecentAidAck] = useState(false);
   const [filterSuggestedOnly, setFilterSuggestedOnly] = useState(false);
+  const [suggestionAlerts, setSuggestionAlerts] = useState<SuggestionAlerts | null>(null);
   const [benSearchInput, setBenSearchInput] = useState('');
   const [benSearchDebounced, setBenSearchDebounced] = useState('');
   const [selectedPick, setSelectedPick] = useState<{
@@ -221,41 +246,99 @@ export function DistributionNewPage() {
 
   useEffect(() => {
     setFilterSuggestedOnly(false);
+    setSuggestionAlerts(null);
   }, [beneficiaryId]);
+
+  /**
+   * Match a beneficiary item need to an available stock item by stable IDs first
+   * (aidCategoryItem.id), then fall back to a normalized name within the same
+   * category. `stocks` only contains items with available stock, so a need that
+   * resolves to no match is treated as "not available in stock".
+   */
+  function matchStockForNeed(need: BeneficiaryNeedRow): StockRowForSelect | undefined {
+    if (need.itemId) {
+      const byId = stocks.find((s) => s.aidCategoryItem?.id === need.itemId);
+      if (byId) return byId;
+    }
+    if (need.itemName) {
+      const target = normalizeName(need.itemName);
+      if (target) {
+        const byName = stocks.find(
+          (s) =>
+            normalizeName(s.aidCategoryItem?.name) === target &&
+            (s.aidCategoryItem?.aidCategoryId === need.aidCategoryId ||
+              s.aidCategoryItem?.aidCategory?.id === need.aidCategoryId),
+        );
+        if (byName) return byName;
+      }
+    }
+    return undefined;
+  }
 
   function applySuggestedItems() {
     if (!needRows.length) {
       toast.warning(t('distributionNew.noRecordedNeedsBeneficiary'));
       return;
     }
-    if (!stocks.length) {
-      toast.warning(t('distributionNew.noStock'));
-      return;
+
+    const itemNeeds = needRows.filter((n) => n.itemId || n.itemName);
+    const categoryLevelNeeds = needRows.filter((n) => !n.itemId && !n.itemName);
+
+    const missing: MissingSuggestion[] = [];
+    const insufficient: InsufficientSuggestion[] = [];
+    const categoryLevel: CategoryLevelSuggestion[] = categoryLevelNeeds.map((n) => ({
+      categoryName: n.aidCategoryName,
+      quantity: n.quantity >= 1 ? n.quantity : null,
+    }));
+
+    // Preserve existing valid manual rows, then merge suggested items by stock id
+    // so the same stock item is never duplicated (quantity is updated instead).
+    const merged = new Map<string, number>();
+    for (const l of lines) {
+      if (l.stockItemId && l.quantity >= 1) merged.set(l.stockItemId, l.quantity);
     }
-    const newLines: Line[] = [];
-    for (const need of needRows) {
-      let match: StockRowForSelect | undefined;
-      if (need.itemId) {
-        match = stocks.find(
-          (s) =>
-            s.aidCategoryItem?.id === need.itemId &&
-            (s.availableQuantity ?? 0) > 0,
-        );
-      }
+
+    let addedOrUpdated = 0;
+    for (const need of itemNeeds) {
+      const match = matchStockForNeed(need);
+      const specifiedQty = need.quantity >= 1 ? need.quantity : null;
       if (!match) {
-        match = stocks.find(
-          (s) =>
-            (s.aidCategoryItem?.aidCategoryId === need.aidCategoryId ||
-              s.aidCategoryItem?.aidCategory?.id === need.aidCategoryId) &&
-            (s.availableQuantity ?? 0) > 0,
-        );
+        missing.push({
+          itemName: need.itemName ?? need.aidCategoryName,
+          categoryName: need.aidCategoryName,
+          quantity: specifiedQty,
+        });
+        continue;
       }
-      const qty = Math.max(1, need.quantity >= 1 ? need.quantity : 1);
-      newLines.push({ stockItemId: match?.id ?? '', quantity: qty });
+      const applyQty = specifiedQty ?? 1;
+      merged.set(match.id, applyQty);
+      addedOrUpdated += 1;
+      const available = match.availableQuantity ?? 0;
+      if (available < applyQty) {
+        insufficient.push({
+          itemName: match.aidCategoryItem?.name ?? need.itemName ?? need.aidCategoryName,
+          categoryName: need.aidCategoryName,
+          needed: applyQty,
+          available,
+          shortage: applyQty - available,
+        });
+      }
     }
-    if (newLines.length) setLines(newLines);
-    if (newLines.some((l) => !l.stockItemId)) {
-      toast.info(t('distributionNew.prefillNeedPickStock'));
+
+    const newLines: Line[] = [...merged.entries()].map(([stockItemId, quantity]) => ({
+      stockItemId,
+      quantity,
+    }));
+    if (newLines.length === 0) newLines.push({ stockItemId: '', quantity: 1 });
+    setLines(newLines);
+    setSuggestionAlerts({ missing, insufficient, categoryLevel });
+
+    if (addedOrUpdated > 0) {
+      toast.success(t('distributionNew.suggestedApplied', { count: addedOrUpdated }));
+    } else if (missing.length > 0) {
+      toast.error(t('distributionNew.suggestedNoneAvailable'));
+    } else if (categoryLevel.length > 0) {
+      toast.info(t('distributionNew.suggestedCategoryOnly'));
     }
   }
 
@@ -475,7 +558,7 @@ export function DistributionNewPage() {
                         <tr key={`${row.aidCategoryId}-${row.itemId ?? 'c'}-${idx}`} className="border-b border-border/70 last:border-0">
                           <td className="border-e border-border px-2 py-2 align-middle break-words">{row.aidCategoryName}</td>
                           <td className="border-e border-border px-2 py-2 align-middle break-words text-muted-foreground">
-                            {row.itemName ?? t('distributionNew.categoryLevelNeed')}
+                            {row.itemName ?? row.aidCategoryName}
                           </td>
                           <td className="border-e border-border px-2 py-2 align-middle tabular-nums">{row.quantity}</td>
                           <td className="px-2 py-2 align-middle break-words text-muted-foreground">
@@ -585,7 +668,7 @@ export function DistributionNewPage() {
                               {row.aidCategoryName}
                             </td>
                             <td className="border-e border-border px-3 py-2.5 align-middle text-start break-words text-muted-foreground">
-                              {row.itemName ?? t('distributionNew.categoryLevelNeed')}
+                              {row.itemName ?? row.aidCategoryName}
                             </td>
                             <td className="border-e border-border px-3 py-2.5 align-middle text-start tabular-nums">
                               {row.quantity}
@@ -629,12 +712,74 @@ export function DistributionNewPage() {
                       variant="outline"
                       className="h-9 shrink-0 text-xs"
                       onClick={() => applySuggestedItems()}
-                      disabled={!needRows.length || stockOptions.length === 0}
+                      disabled={!needRows.length}
                     >
                       {t('distributionNew.useSuggestedItems')}
                     </Button>
                   </div>
                 </div>
+
+                {suggestionAlerts && suggestionAlerts.missing.length > 0 ? (
+                  <div className="space-y-2 rounded-lg border border-rose-500/50 bg-rose-500/10 px-3 py-3 dark:bg-rose-950/30">
+                    <div className="text-sm font-semibold text-rose-950 dark:text-rose-100">
+                      {t('distributionNew.missingStockTitle')}
+                    </div>
+                    <ul className="space-y-1 text-sm text-rose-900/90 dark:text-rose-100/90">
+                      {suggestionAlerts.missing.map((m, idx) => (
+                        <li key={`miss-${idx}`}>
+                          <span className="font-medium">{m.itemName}</span>
+                          {' — '}
+                          {m.quantity !== null
+                            ? t('distributionNew.missingNeededQty', { qty: m.quantity })
+                            : t('distributionNew.qtyNotSpecified')}
+                          {' — '}
+                          {t('distributionNew.missingCategory', { category: m.categoryName })}
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+                ) : null}
+
+                {suggestionAlerts && suggestionAlerts.insufficient.length > 0 ? (
+                  <div className="space-y-2 rounded-lg border border-amber-500/50 bg-amber-500/10 px-3 py-3 dark:bg-amber-950/30">
+                    <div className="text-sm font-semibold text-amber-950 dark:text-amber-100">
+                      {t('distributionNew.insufficientStockTitle')}
+                    </div>
+                    <ul className="space-y-1 text-sm text-amber-900/90 dark:text-amber-100/90">
+                      {suggestionAlerts.insufficient.map((s, idx) => (
+                        <li key={`short-${idx}`}>
+                          <span className="font-medium">{s.itemName}</span>
+                          {' — '}
+                          {t('distributionNew.insufficientDetail', {
+                            needed: s.needed,
+                            available: s.available,
+                            shortage: s.shortage,
+                          })}
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+                ) : null}
+
+                {suggestionAlerts && suggestionAlerts.categoryLevel.length > 0 ? (
+                  <div className="space-y-2 rounded-lg border border-border bg-muted/30 px-3 py-3">
+                    <div className="text-sm font-semibold">
+                      {t('distributionNew.categoryLevelNeedsTitle')}
+                    </div>
+                    <ul className="space-y-1 text-sm text-muted-foreground">
+                      {suggestionAlerts.categoryLevel.map((c, idx) => (
+                        <li key={`cat-${idx}`}>
+                          <span className="font-medium text-foreground">{c.categoryName}</span>
+                          {c.quantity !== null
+                            ? ` — ${t('distributionNew.missingNeededQty', { qty: c.quantity })}`
+                            : ''}
+                          {' — '}
+                          {t('distributionNew.chooseItemManually')}
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+                ) : null}
                 {filterSuggestedOnly && stockOptionsForSelect.length === 0 && stockOptions.length > 0 ? (
                   <p className="text-xs text-amber-800 dark:text-amber-200">{t('distributionNew.filterSuggestedNoMatches')}</p>
                 ) : null}

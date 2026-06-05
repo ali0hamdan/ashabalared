@@ -153,9 +153,9 @@ function PurchaseNeedsCategoryTable({
             className="data-table-row border-s-2 border-s-primary/40 bg-muted/15"
           >
             <td className="data-table-td text-start">
-              <div className="font-medium">{t('purchaseNeeds.categoryTotal')}</div>
+              <div className="font-medium">{cat.aidCategoryName}</div>
               <p className="mt-1 text-xs text-muted-foreground/90">
-                {t('purchaseNeeds.categoryLevelHelper')}
+                {t('purchaseNeeds.categoryQuantitySubtext')}
               </p>
             </td>
             <td className="data-table-td text-center text-muted-foreground">{t('common.dash')}</td>
@@ -187,9 +187,9 @@ function PurchaseNeedsCategoryTable({
                 onClick={() =>
                   onViewBeneficiaries({
                     categoryName: cat.aidCategoryName,
-                    title: t('purchaseNeeds.categoryTotal'),
+                    title: cat.aidCategoryName,
                     beneficiaries: cat.categoryNeed!.beneficiaries,
-                    helperText: t('purchaseNeeds.categoryLevelHelper'),
+                    helperText: t('purchaseNeeds.categoryQuantitySubtext'),
                   })
                 }
               >
