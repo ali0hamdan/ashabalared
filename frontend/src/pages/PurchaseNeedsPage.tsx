@@ -44,12 +44,13 @@ type PurchaseNeedsItem = {
   beneficiaries: PurchaseNeedsBeneficiary[];
 };
 
-type PurchaseNeedsUnspecified = {
+type PurchaseNeedsCategoryNeed = {
   type: 'CATEGORY';
   label: string;
   totalNeeded: number;
   totalNeededLabel: string;
   hasUnspecifiedQuantity: boolean;
+  needToBuy: number;
   beneficiariesCount: number;
   beneficiaries: PurchaseNeedsBeneficiary[];
   helperText: string;
@@ -58,8 +59,9 @@ type PurchaseNeedsUnspecified = {
 type PurchaseNeedsCategory = {
   aidCategoryId: string;
   aidCategoryName: string;
+  quantityMode: 'CATEGORY_LEVEL' | 'ITEM_LEVEL';
   items: PurchaseNeedsItem[];
-  unspecifiedNeed: PurchaseNeedsUnspecified | null;
+  categoryNeed: PurchaseNeedsCategoryNeed | null;
 };
 
 type PurchaseNeedsResponse = {
@@ -145,33 +147,37 @@ function PurchaseNeedsCategoryTable({
             </td>
           </tr>
         ))}
-        {cat.unspecifiedNeed ? (
+        {cat.categoryNeed ? (
           <tr
-            key={`${cat.aidCategoryId}-unspecified`}
-            className="data-table-row border-s-2 border-s-muted-foreground/25 bg-muted/15"
+            key={`${cat.aidCategoryId}-category-total`}
+            className="data-table-row border-s-2 border-s-primary/40 bg-muted/15"
           >
             <td className="data-table-td text-start">
-              <div className="font-medium text-muted-foreground">
-                {t('purchaseNeeds.unspecifiedNeed')}
-              </div>
+              <div className="font-medium">{t('purchaseNeeds.categoryTotal')}</div>
               <p className="mt-1 text-xs text-muted-foreground/90">
-                {t('purchaseNeeds.specificItemNotSelected')}
+                {t('purchaseNeeds.categoryLevelHelper')}
               </p>
             </td>
             <td className="data-table-td text-center text-muted-foreground">{t('common.dash')}</td>
             <td className="data-table-td text-end tabular-nums">
-              {cat.unspecifiedNeed.totalNeededLabel}
+              {cat.categoryNeed.totalNeededLabel}
             </td>
             <td className="data-table-td text-end tabular-nums text-muted-foreground">
               {t('common.dash')}
             </td>
             <td className="data-table-td text-center">
               <div className="flex justify-center">
-                <Badge variant="neutral">{t('purchaseNeeds.chooseItem')}</Badge>
+                {cat.categoryNeed.needToBuy > 0 ? (
+                  <Badge variant="warning">
+                    {t('purchaseNeeds.buyBadge', { count: cat.categoryNeed.needToBuy })}
+                  </Badge>
+                ) : (
+                  <Badge variant="neutral">{t('purchaseNeeds.reviewCategoryStock')}</Badge>
+                )}
               </div>
             </td>
             <td className="data-table-td text-end tabular-nums">
-              {cat.unspecifiedNeed.beneficiariesCount}
+              {cat.categoryNeed.beneficiariesCount}
             </td>
             <td className="data-table-td text-end">
               <Button
@@ -181,9 +187,9 @@ function PurchaseNeedsCategoryTable({
                 onClick={() =>
                   onViewBeneficiaries({
                     categoryName: cat.aidCategoryName,
-                    title: t('purchaseNeeds.unspecifiedNeed'),
-                    beneficiaries: cat.unspecifiedNeed!.beneficiaries,
-                    helperText: t('purchaseNeeds.specificItemNotSelected'),
+                    title: t('purchaseNeeds.categoryTotal'),
+                    beneficiaries: cat.categoryNeed!.beneficiaries,
+                    helperText: t('purchaseNeeds.categoryLevelHelper'),
                   })
                 }
               >
@@ -338,7 +344,7 @@ export function PurchaseNeedsPage() {
 
   const totalItems =
     data?.categories.reduce(
-      (n, c) => n + c.items.length + (c.unspecifiedNeed ? 1 : 0),
+      (n, c) => n + c.items.length + (c.categoryNeed ? 1 : 0),
       0,
     ) ?? 0;
 
@@ -439,7 +445,7 @@ export function PurchaseNeedsPage() {
         >
           {data.categories.map((cat) => {
             const open = expandedCats[cat.aidCategoryId] !== false;
-            const itemCount = cat.items.length + (cat.unspecifiedNeed ? 1 : 0);
+            const itemCount = cat.items.length + (cat.categoryNeed ? 1 : 0);
             return (
               <Card
                 key={cat.aidCategoryId}

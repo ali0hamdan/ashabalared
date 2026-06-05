@@ -40,15 +40,18 @@ type BeneficiaryListRow = BeneficiaryNeedChipSource & {
 };
 
 function beneficiaryNeedChipLabels(b: BeneficiaryNeedChipSource): string[] {
+  // ITEM_LEVEL categories surface item names (qty ≥ 1); CATEGORY_LEVEL categories
+  // surface the category name (saved with qty ≥ 1). Combine + dedupe so a beneficiary
+  // with both kinds of needs shows each once, without duplicating category + item.
   const items = (b.itemNeeds ?? []).filter((n) => n.needed && (n.quantity ?? 0) >= 1);
-  const fromItems = [...new Set(items.map((n) => n.aidCategoryItem?.name).filter((x): x is string => Boolean(x?.trim())))].sort((a, c) =>
-    a.localeCompare(c),
-  );
-  if (fromItems.length) return fromItems;
-  const cats = b.categories ?? [];
-  return [...new Set(cats.map((n) => n.category?.name).filter((x): x is string => Boolean(x?.trim())))].sort((a, c) =>
-    a.localeCompare(c),
-  );
+  const fromItems = items
+    .map((n) => n.aidCategoryItem?.name)
+    .filter((x): x is string => Boolean(x?.trim()));
+  const fromCategories = (b.categories ?? [])
+    .filter((n) => (n.quantity ?? 0) >= 1)
+    .map((n) => n.category?.name)
+    .filter((x): x is string => Boolean(x?.trim()));
+  return [...new Set([...fromItems, ...fromCategories])].sort((a, c) => a.localeCompare(c));
 }
 
 function deleteErrorMessage(e: unknown, fallback: string): string {

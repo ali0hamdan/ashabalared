@@ -1,5 +1,10 @@
 import { BadRequestException, Injectable } from '@nestjs/common';
-import { BeneficiaryStatus, RoleCode, StockUnit } from '@prisma/client';
+import {
+  AidCategoryQuantityMode,
+  BeneficiaryStatus,
+  RoleCode,
+  StockUnit,
+} from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import type { AuthUser } from '../common/decorators/current-user.decorator';
 import { parseIncludeInactive } from '../beneficiaries/constants/beneficiary-list-query';
@@ -16,7 +21,7 @@ export type PurchaseNeedsBeneficiaryRow = {
   notes: string | null;
 };
 
-export const PURCHASE_NEEDS_UNSPECIFIED_LABEL = 'Unspecified need';
+export const PURCHASE_NEEDS_CATEGORY_TOTAL_LABEL = 'Category total';
 
 export type PurchaseNeedsItemRow = {
   type: 'ITEM';
@@ -32,12 +37,15 @@ export type PurchaseNeedsItemRow = {
   beneficiaries: PurchaseNeedsBeneficiaryRow[];
 };
 
-export type PurchaseNeedsUnspecifiedRow = {
+/** Category-level need row (for CATEGORY_LEVEL categories: one total per category). */
+export type PurchaseNeedsCategoryNeedRow = {
   type: 'CATEGORY';
   label: string;
   totalNeeded: number;
   totalNeededLabel: string;
   hasUnspecifiedQuantity: boolean;
+  /** Category-level purchase need (no per-item stock matching). */
+  needToBuy: number;
   beneficiariesCount: number;
   beneficiaries: PurchaseNeedsBeneficiaryRow[];
   helperText: string;
@@ -46,8 +54,10 @@ export type PurchaseNeedsUnspecifiedRow = {
 export type PurchaseNeedsCategoryRow = {
   aidCategoryId: string;
   aidCategoryName: string;
+  quantityMode: AidCategoryQuantityMode;
   items: PurchaseNeedsItemRow[];
-  unspecifiedNeed: PurchaseNeedsUnspecifiedRow | null;
+  /** Present only for CATEGORY_LEVEL categories. */
+  categoryNeed: PurchaseNeedsCategoryNeedRow | null;
 };
 
 export type PurchaseNeedsResponse = {
@@ -113,33 +123,13 @@ export class PurchaseNeedsService {
     return q >= 1 || note.length > 0;
   }
 
-  private resolveItemQuantity(
-    itemNeed: { quantity: number; notes: string | null },
-    categoryNeed?: { quantity: number; notes: string | null },
-  ): { quantity: number | null; label: string } {
+  private resolveItemQuantity(itemNeed: {
+    quantity: number;
+    notes: string | null;
+  }): { quantity: number | null; label: string } {
     const q = itemNeed.quantity ?? 0;
-    const itemNote = itemNeed.notes?.trim() ?? '';
     if (q >= 1) {
       return { quantity: q, label: String(q) };
-    }
-    if (itemNote) {
-      return {
-        quantity: null,
-        label: 'No quantity specified',
-      };
-    }
-    if (categoryNeed && this.isRealCategoryNeed(categoryNeed)) {
-      const catQ = categoryNeed.quantity ?? 0;
-      if (catQ >= 1) {
-        return { quantity: catQ, label: String(catQ) };
-      }
-      const catNote = categoryNeed.notes?.trim() ?? '';
-      if (catNote) {
-        return {
-          quantity: null,
-          label: 'Needed, no quantity specified',
-        };
-      }
     }
     return { quantity: null, label: 'No quantity specified' };
   }
@@ -231,6 +221,7 @@ export class PurchaseNeedsService {
         select: {
           id: true,
           name: true,
+          quantityMode: true,
           items: {
             orderBy: [{ sortOrder: 'asc' }, { name: 'asc' }],
             select: {
@@ -286,6 +277,72 @@ export class PurchaseNeedsService {
     const categories: PurchaseNeedsCategoryRow[] = [];
 
     for (const cat of catalog) {
+      // CATEGORY_LEVEL: quantity comes from beneficiary category needs (one total per category).
+      if (cat.quantityMode === AidCategoryQuantityMode.CATEGORY_LEVEL) {
+        let categoryTotal = 0;
+        let categoryUnspecified = false;
+        const categoryBeneficiaries: PurchaseNeedsBeneficiaryRow[] = [];
+
+        for (const b of beneficiaries as BeneficiaryNeedSource[]) {
+          const catNeed = b.categories.find((c) => c.categoryId === cat.id);
+          if (!catNeed || !this.isRealCategoryNeed(catNeed)) continue;
+
+          const catQ = catNeed.quantity ?? 0;
+          const catNote = catNeed.notes?.trim() ?? '';
+          if (catQ >= 1) {
+            categoryTotal += catQ;
+          } else {
+            categoryUnspecified = true;
+          }
+          categoryBeneficiaries.push({
+            id: b.id,
+            fullName: b.fullName,
+            phone: b.phone,
+            area: b.area,
+            street: b.addressLine?.trim() || null,
+            quantity: catQ >= 1 ? catQ : null,
+            quantityLabel: catQ >= 1 ? String(catQ) : 'No quantity specified',
+            notes: catNote || null,
+          });
+        }
+
+        if (categoryBeneficiaries.length === 0) continue;
+        if (
+          search &&
+          !this.matchesSearch(
+            search,
+            cat.name,
+            PURCHASE_NEEDS_CATEGORY_TOTAL_LABEL,
+          )
+        ) {
+          continue;
+        }
+
+        categories.push({
+          aidCategoryId: cat.id,
+          aidCategoryName: cat.name,
+          quantityMode: cat.quantityMode,
+          items: [],
+          categoryNeed: {
+            type: 'CATEGORY',
+            label: PURCHASE_NEEDS_CATEGORY_TOTAL_LABEL,
+            totalNeeded: categoryTotal,
+            totalNeededLabel: categoryUnspecified
+              ? categoryTotal > 0
+                ? `${categoryTotal} + no qty`
+                : 'No quantity specified'
+              : String(categoryTotal),
+            hasUnspecifiedQuantity: categoryUnspecified,
+            needToBuy: categoryTotal,
+            beneficiariesCount: categoryBeneficiaries.length,
+            beneficiaries: categoryBeneficiaries,
+            helperText: 'Category-level quantity',
+          },
+        });
+        continue;
+      }
+
+      // ITEM_LEVEL: quantity comes from per-item needs.
       const itemAccum = new Map<string, ItemAccumulator>();
       for (const item of cat.items) {
         itemAccum.set(item.id, {
@@ -299,14 +356,7 @@ export class PurchaseNeedsService {
         });
       }
 
-      let categoryOnlyTotal = 0;
-      let categoryOnlyUnspecified = false;
-      const categoryOnlyBeneficiaries: PurchaseNeedsBeneficiaryRow[] = [];
-
       for (const b of beneficiaries as BeneficiaryNeedSource[]) {
-        const catNeed = b.categories.find((c) => c.categoryId === cat.id);
-        const catNeedReal = catNeed && this.isRealCategoryNeed(catNeed);
-
         const realItemNeedsInCat = b.itemNeeds.filter(
           (n) =>
             n.aidCategoryItem.aidCategoryId === cat.id &&
@@ -317,10 +367,10 @@ export class PurchaseNeedsService {
           const acc = itemAccum.get(n.aidCategoryItem.id);
           if (!acc) continue;
 
-          const resolved = this.resolveItemQuantity(
-            { quantity: n.quantity, notes: n.notes },
-            catNeedReal ? catNeed : undefined,
-          );
+          const resolved = this.resolveItemQuantity({
+            quantity: n.quantity,
+            notes: n.notes,
+          });
 
           if (resolved.quantity === null) {
             acc.hasUnspecified = true;
@@ -336,28 +386,7 @@ export class PurchaseNeedsService {
             street: b.addressLine?.trim() || null,
             quantity: resolved.quantity,
             quantityLabel: resolved.label,
-            notes: n.notes?.trim() || catNeed?.notes?.trim() || null,
-          });
-        }
-
-        if (catNeedReal && realItemNeedsInCat.length === 0) {
-          const catQ = catNeed!.quantity ?? 0;
-          const catNote = catNeed!.notes?.trim() ?? '';
-          if (catQ >= 1) {
-            categoryOnlyTotal += catQ;
-          } else {
-            categoryOnlyUnspecified = true;
-          }
-          categoryOnlyBeneficiaries.push({
-            id: b.id,
-            fullName: b.fullName,
-            phone: b.phone,
-            area: b.area,
-            street: b.addressLine?.trim() || null,
-            quantity: catQ >= 1 ? catQ : null,
-            quantityLabel:
-              catQ >= 1 ? String(catQ) : 'No quantity specified',
-            notes: catNote || null,
+            notes: n.notes?.trim() || null,
           });
         }
       }
@@ -386,60 +415,22 @@ export class PurchaseNeedsService {
           beneficiaries: acc.beneficiaries,
         };
 
-        if (
-          search &&
-          !this.matchesSearch(search, cat.name, row.itemName)
-        ) {
+        if (search && !this.matchesSearch(search, cat.name, row.itemName)) {
           continue;
         }
 
         items.push(row);
       }
 
-      let unspecifiedNeed: PurchaseNeedsUnspecifiedRow | null = null;
-      if (categoryOnlyBeneficiaries.length > 0) {
-        if (
-          !search ||
-          this.matchesSearch(
-            search,
-            cat.name,
-            PURCHASE_NEEDS_UNSPECIFIED_LABEL,
-          )
-        ) {
-          unspecifiedNeed = {
-            type: 'CATEGORY',
-            label: PURCHASE_NEEDS_UNSPECIFIED_LABEL,
-            totalNeeded: categoryOnlyTotal,
-            totalNeededLabel: categoryOnlyUnspecified
-              ? categoryOnlyTotal > 0
-                ? `${categoryOnlyTotal} + no qty`
-                : 'No quantity specified'
-              : String(categoryOnlyTotal),
-            hasUnspecifiedQuantity: categoryOnlyUnspecified,
-            beneficiariesCount: categoryOnlyBeneficiaries.length,
-            beneficiaries: categoryOnlyBeneficiaries,
-            helperText: 'Specific item not selected',
-          };
-        }
-      }
-
-      const filteredItems = items.filter((row) => {
-        if (!search) return row.beneficiariesCount > 0;
-        return (
-          this.matchesSearch(search, cat.name, row.itemName) &&
-          row.beneficiariesCount > 0
-        );
-      });
-
-      const hasUnspecified =
-        unspecifiedNeed && unspecifiedNeed.beneficiariesCount > 0;
-      if (filteredItems.length === 0 && !hasUnspecified) continue;
+      const filteredItems = items.filter((row) => row.beneficiariesCount > 0);
+      if (filteredItems.length === 0) continue;
 
       categories.push({
         aidCategoryId: cat.id,
         aidCategoryName: cat.name,
+        quantityMode: cat.quantityMode,
         items: this.sortItems(filteredItems, field, asc),
-        unspecifiedNeed: hasUnspecified ? unspecifiedNeed : null,
+        categoryNeed: null,
       });
     }
 
@@ -550,8 +541,8 @@ export class PurchaseNeedsService {
           item.beneficiaries,
         );
       }
-      if (cat.unspecifiedNeed) {
-        const u = cat.unspecifiedNeed;
+      if (cat.categoryNeed) {
+        const u = cat.categoryNeed;
         pushDetailRows(
           cat.aidCategoryName,
           u.label,
@@ -559,7 +550,7 @@ export class PurchaseNeedsService {
           u.totalNeeded,
           u.totalNeededLabel,
           '—',
-          'Choose item',
+          String(u.needToBuy),
           u.beneficiariesCount,
           u.beneficiaries,
         );

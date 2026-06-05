@@ -37,6 +37,7 @@ export class CategoriesService {
         name,
         description: dto.description?.trim() || null,
         isActive: dto.isActive ?? true,
+        quantityMode: dto.quantityMode ?? undefined,
         items: dto.items?.length
           ? {
               create: dto.items.map((it, i) => ({
@@ -75,6 +76,7 @@ export class CategoriesService {
         description:
           dto.description === undefined ? undefined : dto.description,
         isActive: dto.isActive,
+        quantityMode: dto.quantityMode ?? undefined,
       },
       include: { items: true },
     });
@@ -398,6 +400,11 @@ export class CategoriesService {
       },
     });
     for (const r of legacyRows) {
+      // Skip marker rows (qty 0, no notes) — these are ITEM_LEVEL "category selected"
+      // placeholders whose real needs already appear as item lines.
+      const q = r.quantity ?? 0;
+      const note = (r.notes ?? '').trim();
+      if (q < 1 && !note) continue;
       const b = r.beneficiary;
       let acc = byBen.get(b.id);
       if (!acc) {

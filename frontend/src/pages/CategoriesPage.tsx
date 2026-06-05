@@ -36,11 +36,14 @@ const UNITS = ['PIECE', 'BOX', 'PACK', 'BAG', 'KG', 'LITER', 'SET'] as const;
 
 type CatalogItem = { id: string; name: string; defaultQuantity?: number; unit?: string };
 
+type QuantityMode = 'CATEGORY_LEVEL' | 'ITEM_LEVEL';
+
 type CategoryRow = {
   id: string;
   name: string;
   description?: string | null;
   isActive?: boolean;
+  quantityMode?: QuantityMode;
   archivedAt?: string | null;
   items?: CatalogItem[];
 };
@@ -92,6 +95,7 @@ export function CategoriesPage() {
   const [catName, setCatName] = useState('');
   const [catDesc, setCatDesc] = useState('');
   const [catActive, setCatActive] = useState(true);
+  const [catMode, setCatMode] = useState<QuantityMode>('CATEGORY_LEVEL');
 
   const [itemDlg, setItemDlg] = useState<{ categoryId: string; mode: 'add' | { edit: CatalogItem } } | null>(null);
   const [itemName, setItemName] = useState('');
@@ -140,6 +144,7 @@ export function CategoriesPage() {
           name: catName,
           description: catDesc || undefined,
           isActive: catActive,
+          quantityMode: catMode,
         });
         if (created?.id) return { kind: 'add', id: created.id };
         return undefined;
@@ -149,6 +154,7 @@ export function CategoriesPage() {
           name: catName || undefined,
           description: catDesc,
           isActive: catActive,
+          quantityMode: catMode,
         });
         return { kind: 'edit', id: catDlg.edit.id };
       }
@@ -216,6 +222,7 @@ export function CategoriesPage() {
     setCatName('');
     setCatDesc('');
     setCatActive(true);
+    setCatMode('CATEGORY_LEVEL');
     setCatDlg('add');
   }
 
@@ -223,6 +230,7 @@ export function CategoriesPage() {
     setCatName(c.name);
     setCatDesc(c.description ?? '');
     setCatActive(Boolean(c.isActive));
+    setCatMode(c.quantityMode === 'ITEM_LEVEL' ? 'ITEM_LEVEL' : 'CATEGORY_LEVEL');
     setCatDlg({ edit: c });
   }
 
@@ -372,6 +380,11 @@ export function CategoriesPage() {
                           ) : (
                             <Badge variant="danger">{t('categories.inactive')}</Badge>
                           )}
+                          <Badge variant="outline">
+                            {c.quantityMode === 'ITEM_LEVEL'
+                              ? t('categories.modeItemBadge')
+                              : t('categories.modeCategoryBadge')}
+                          </Badge>
                           {c.archivedAt ? (
                             <Badge variant="outline" className="border-amber-600 text-amber-800 dark:text-amber-200">
                               {t('categories.archivedBadge')}
@@ -400,6 +413,11 @@ export function CategoriesPage() {
                     ) : (
                       <Badge variant="danger">{t('categories.inactive')}</Badge>
                     )}
+                    <Badge variant="outline">
+                      {activeCategory.quantityMode === 'ITEM_LEVEL'
+                        ? t('categories.modeItemBadge')
+                        : t('categories.modeCategoryBadge')}
+                    </Badge>
                     {activeCategory.archivedAt ? (
                       <Badge variant="outline" className="border-amber-600 text-amber-800 dark:text-amber-200">
                         {t('categories.archivedBadge')}
@@ -629,6 +647,22 @@ export function CategoriesPage() {
           <div className="space-y-2">
             <Label>{t('categories.fieldDescription')}</Label>
             <Input value={catDesc} onChange={(e) => setCatDesc(e.target.value)} />
+          </div>
+          <div className="space-y-2">
+            <Label>{t('categories.fieldQuantityMode')}</Label>
+            <select
+              className="h-10 w-full rounded-md border border-border bg-card px-3 text-sm"
+              value={catMode}
+              onChange={(e) => setCatMode(e.target.value as QuantityMode)}
+            >
+              <option value="CATEGORY_LEVEL">{t('categories.modeCategoryOption')}</option>
+              <option value="ITEM_LEVEL">{t('categories.modeItemOption')}</option>
+            </select>
+            <p className="text-xs text-muted-foreground">
+              {catMode === 'ITEM_LEVEL'
+                ? t('categories.modeItemHelp')
+                : t('categories.modeCategoryHelp')}
+            </p>
           </div>
           <label className="flex items-center gap-2 text-sm">
             <input type="checkbox" checked={catActive} onChange={(e) => setCatActive(e.target.checked)} />

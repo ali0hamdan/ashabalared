@@ -8,10 +8,14 @@ export type AidCatalogItem = {
   unit?: string;
 };
 
+export type AidCategoryQuantityMode = 'CATEGORY_LEVEL' | 'ITEM_LEVEL';
+
 export type AidCatalogCategory = {
   id: string;
   name: string;
   isActive?: boolean;
+  /** Where the quantity is entered. Defaults to CATEGORY_LEVEL for legacy categories. */
+  quantityMode: AidCategoryQuantityMode;
   /** Always present after `normalizeAidCategoriesForForm` (empty when API omits items). */
   items: AidCatalogItem[];
 };
@@ -34,13 +38,19 @@ export type CategoryNeedPayload = { categoryId: string; quantity: number; notes:
 
 /** Active categories with items sorted for stable UI. */
 export function normalizeAidCategoriesForForm(data: unknown): AidCatalogCategory[] {
-  const list = Array.isArray(data) ? (data as (Omit<AidCatalogCategory, 'items'> & { items?: AidCatalogItem[] })[]) : [];
+  const list = Array.isArray(data)
+    ? (data as (Omit<AidCatalogCategory, 'items' | 'quantityMode'> & {
+        items?: AidCatalogItem[];
+        quantityMode?: string | null;
+      })[])
+    : [];
   return list
     .filter((c) => c.isActive !== false)
     .map((c) => ({
       id: c.id,
       name: c.name,
       isActive: c.isActive,
+      quantityMode: c.quantityMode === 'ITEM_LEVEL' ? 'ITEM_LEVEL' : 'CATEGORY_LEVEL',
       items: [...(c.items ?? [])].sort(
         (a, b) => (a.sortOrder ?? 0) - (b.sortOrder ?? 0) || a.name.localeCompare(b.name),
       ),
@@ -118,6 +128,8 @@ export function buildItemNeedsPayload(
   const itemNeeds: ItemNeedPayload[] = [];
   for (const c of catRows) {
     if (!categoryChecked[c.id]) continue;
+    // CATEGORY_LEVEL categories carry their quantity on the category, not items.
+    if (c.quantityMode === 'CATEGORY_LEVEL') continue;
     for (const it of c.items) {
       const st = itemFields[it.id] ?? { notes: '', qty: '' };
       const raw = (st.qty ?? '').trim();
@@ -149,11 +161,18 @@ export function buildCategoryNeedsPayload(
   const out: CategoryNeedPayload[] = [];
   for (const c of catRows) {
     if (!categoryChecked[c.id]) continue;
-    const raw = (categoryQtyFields[c.id] ?? '').trim();
-    const parsed = raw === '' ? 0 : parseInt(raw, 10);
-    const quantity = Number.isFinite(parsed) ? Math.max(0, Math.floor(parsed)) : 0;
     const pid = previous?.find((x) => x.category?.id === c.id || x.categoryId === c.id);
     const n = typeof pid?.notes === 'string' ? pid.notes.trim() : '';
+    if (c.quantityMode === 'ITEM_LEVEL') {
+      // Quantity lives on the items; keep a marker row (qty 0) so the category stays selected.
+      out.push({ categoryId: c.id, quantity: 0, notes: n.length ? n : null });
+      continue;
+    }
+    const raw = (categoryQtyFields[c.id] ?? '').trim();
+    const parsed = raw === '' ? 0 : parseInt(raw, 10);
+    const safe = Number.isFinite(parsed) ? Math.max(0, Math.floor(parsed)) : 0;
+    // CATEGORY_LEVEL: default to 1 when checked but left empty/0.
+    const quantity = safe >= 1 ? safe : 1;
     out.push({ categoryId: c.id, quantity, notes: n.length ? n : null });
   }
   return out;

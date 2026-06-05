@@ -1,4 +1,11 @@
-import { IsBoolean, IsOptional, IsString, MinLength } from 'class-validator';
+import {
+  IsBoolean,
+  IsEnum,
+  IsOptional,
+  IsString,
+  MinLength,
+} from 'class-validator';
+import { AidCategoryQuantityMode } from '@prisma/client';
 
 export class UpdateCategoryDto {
   @IsOptional()
@@ -13,4 +20,8 @@ export class UpdateCategoryDto {
   @IsOptional()
   @IsBoolean()
   isActive?: boolean;
+
+  @IsOptional()
+  @IsEnum(AidCategoryQuantityMode)
+  quantityMode?: AidCategoryQuantityMode;
 }

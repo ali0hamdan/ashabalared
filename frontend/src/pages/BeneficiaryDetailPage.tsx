@@ -666,8 +666,8 @@ export function BeneficiaryDetailPage() {
                           className="rounded-lg border border-dashed border-border bg-muted/15 px-3 py-2 text-sm"
                         >
                           <div>
-                            <span className="font-medium text-muted-foreground">
-                              {t('beneficiaryDetail.unspecifiedNeed')}
+                            <span className="font-medium">
+                              {t('beneficiaryDetail.neededLabel')}
                             </span>
                             {(g.categoryOnly.quantity ?? 0) >= 1 ? (
                               <span className="ms-2 text-muted-foreground">
@@ -709,8 +709,8 @@ export function BeneficiaryDetailPage() {
                       <ul className="mt-2 space-y-2">
                         <li className="rounded-lg border border-border bg-muted/20 px-3 py-2 text-sm">
                           <div>
-                            <span className="font-medium text-muted-foreground">
-                              {t('beneficiaryDetail.unspecifiedNeed')}
+                            <span className="font-medium">
+                              {t('beneficiaryDetail.neededLabel')}
                             </span>
                             {q >= 1 ? (
                               <span className="ms-2 text-muted-foreground">

@@ -106,8 +106,10 @@ export function BeneficiaryItemNeedsFields({
               const catOn = Boolean(categoryChecked[c.id]);
               const catEffectiveOn = foodBlocked ? false : catOn;
               const catInputId = `need-category-${c.id}`;
+              const isCategoryLevel = c.quantityMode !== 'ITEM_LEVEL';
               const itemsVisible = categoryItemsVisible(c.id);
               const hasItems = c.items.length > 0;
+              const showItemsControls = !isCategoryLevel && hasItems;
               return (
                 <div
                   key={c.id}
@@ -116,7 +118,7 @@ export function BeneficiaryItemNeedsFields({
                   <div
                     className={cn(
                       'flex flex-wrap items-start gap-x-3 gap-y-2',
-                      !(hasItems && !itemsVisible) && 'mb-3',
+                      !(showItemsControls && !itemsVisible) && 'mb-3',
                     )}
                   >
                     <div className="flex min-w-0 flex-1 flex-wrap items-start gap-x-4 gap-y-2">
@@ -129,42 +131,51 @@ export function BeneficiaryItemNeedsFields({
                           onChange={(e) => setCategoryNeed(c.id, e.target.checked)}
                           className="mt-0.5 h-[1.125rem] w-[1.125rem] shrink-0 rounded border border-input accent-primary disabled:cursor-not-allowed disabled:opacity-45"
                         />
-                        <Label
-                          htmlFor={catInputId}
-                          className={cn(
-                            'min-w-0 flex-1 text-base font-semibold leading-snug text-foreground',
-                            foodBlocked ? 'cursor-not-allowed opacity-70' : 'cursor-pointer',
-                          )}
-                        >
-                          {c.name}
-                        </Label>
+                        <div className="min-w-0 flex-1">
+                          <Label
+                            htmlFor={catInputId}
+                            className={cn(
+                              'block text-base font-semibold leading-snug text-foreground',
+                              foodBlocked ? 'cursor-not-allowed opacity-70' : 'cursor-pointer',
+                            )}
+                          >
+                            {c.name}
+                          </Label>
+                          <p className="mt-0.5 text-xs text-muted-foreground">
+                            {isCategoryLevel
+                              ? t('beneficiaryNew.modeCategoryHint')
+                              : t('beneficiaryNew.modeItemHint')}
+                          </p>
+                        </div>
                       </div>
-                      <div className="flex shrink-0 items-center gap-2">
-                        <Label
-                          htmlFor={`need-category-qty-${c.id}`}
-                          className="text-xs text-muted-foreground whitespace-nowrap"
-                        >
-                          {t('beneficiaryNew.categoryQtyLabel')}
-                        </Label>
-                        <Input
-                          id={`need-category-qty-${c.id}`}
-                          type="text"
-                          inputMode="numeric"
-                          autoComplete="off"
-                          className="h-11 w-[4.75rem] tabular-nums"
-                          disabled={!catEffectiveOn}
-                          placeholder="0"
-                          value={categoryQtyFields[c.id] ?? ''}
-                          onChange={(e) =>
-                            setCategoryQtyFields((m) => ({
-                              ...m,
-                              [c.id]: sanitizeDigitsOnly(e.target.value),
-                            }))
-                          }
-                        />
-                      </div>
+                      {isCategoryLevel ? (
+                        <div className="flex shrink-0 items-center gap-2">
+                          <Label
+                            htmlFor={`need-category-qty-${c.id}`}
+                            className="text-xs text-muted-foreground whitespace-nowrap"
+                          >
+                            {t('beneficiaryNew.categoryQtyLabel')}
+                          </Label>
+                          <Input
+                            id={`need-category-qty-${c.id}`}
+                            type="text"
+                            inputMode="numeric"
+                            autoComplete="off"
+                            className="h-11 w-[4.75rem] tabular-nums"
+                            disabled={!catEffectiveOn}
+                            placeholder="1"
+                            value={categoryQtyFields[c.id] ?? ''}
+                            onChange={(e) =>
+                              setCategoryQtyFields((m) => ({
+                                ...m,
+                                [c.id]: sanitizeDigitsOnly(e.target.value),
+                              }))
+                            }
+                          />
+                        </div>
+                      ) : null}
                     </div>
-                    {hasItems ? (
+                    {showItemsControls ? (
                       <button
                         type="button"
                         className="ms-auto inline-flex shrink-0 items-center gap-1.5 rounded-lg border border-border/80 bg-muted/40 px-3 py-2 text-xs font-medium text-foreground transition-colors hover:bg-muted/70 sm:text-sm"
@@ -186,7 +197,7 @@ export function BeneficiaryItemNeedsFields({
                       </button>
                     ) : null}
                   </div>
-                  {c.items.length === 0 ? (
+                  {isCategoryLevel ? null : c.items.length === 0 ? (
                     <p className="text-sm text-muted-foreground">{t('beneficiaryNew.categoryNoItems')}</p>
                   ) : itemsVisible ? (
                     <ul

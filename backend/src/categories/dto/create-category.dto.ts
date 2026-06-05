@@ -10,7 +10,7 @@ import {
   ValidateNested,
 } from 'class-validator';
 import { Type } from 'class-transformer';
-import { StockUnit } from '@prisma/client';
+import { AidCategoryQuantityMode, StockUnit } from '@prisma/client';
 
 export class CreateCategoryItemSeedDto {
   @IsString()
@@ -39,6 +39,10 @@ export class CreateCategoryDto {
   @IsOptional()
   @IsBoolean()
   isActive?: boolean;
+
+  @IsOptional()
+  @IsEnum(AidCategoryQuantityMode)
+  quantityMode?: AidCategoryQuantityMode;
 
   @IsOptional()
   @IsArray()
